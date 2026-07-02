@@ -78,7 +78,8 @@ is judged too slow to run Whisper locally and the policy below applies:
 | `'server'` | `t.mode = 'server'`. `transcribeBlob()` uploads the audio blob to `${fallbackUrl}/transcribe` (`multipart/form-data`, `X-API-Key: fallbackApiKey`) instead of running it locally. Requires `fallbackUrl`; throws at construction time otherwise. This is the only path in this library that ever sends audio over the network. |
 
 Device selection (`'webgpu'` vs `'wasm'`) is a simple `navigator.gpu`
-presence check, not a real capability probe — see "Known limitation" below.
+presence check, not a real capability probe — see "Known limitation" below
+for how a broken-but-present WebGPU is handled.
 
 ## Model download
 
@@ -116,17 +117,17 @@ strict SLA.
 
 ### Known limitation: `navigator.gpu` presence != working WebGPU
 
-Device selection is `navigator.gpu ? 'webgpu' : 'wasm'`. On some
-environments (observed here: headless Chromium, software rendering, no
-real/virtual GPU) `navigator.gpu` exists as an object but
-`requestAdapter()` unconditionally fails at model-load time
-(`no available backend found ... Failed to get GPU adapter`), which the
-current code treats as a hard load failure -> `unsupported`, *never*
-reaching the WASM path or the benchmark, even though WASM works fine on the
-same machine. This is a real gap (a capability probe, not just a property
-check, would fix it) but is out of scope for this task — flagging it as a
-tuning/robustness note for whoever next touches `transcriber.js`'s device
-selection.
+Device selection is `navigator.gpu ? 'webgpu' : 'wasm'`, a presence check
+rather than a real capability probe. On some environments (observed here:
+headless Chromium, software rendering, no real/virtual GPU) `navigator.gpu`
+exists as an object but `requestAdapter()` unconditionally fails at
+model-load time (`no available backend found ... Failed to get GPU
+adapter`). `transcriber.js` handles this: a failed `'webgpu'` load
+terminates that worker and retries once on a fresh worker with `'wasm'`,
+running the normal benchmark on success. Only when the WASM retry also
+fails does the device degrade to `unsupported`/`server`. A `'wasm'`-first
+attempt (no `navigator.gpu`) that fails still degrades immediately, since
+there's nothing left to retry.
 
 ## Zero-upload guarantee
 

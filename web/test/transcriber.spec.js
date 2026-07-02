@@ -2,14 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createTranscriber } from '../src/transcriber.js'
 
 // Minimal fake worker implementing the load/transcribe protocol.
-function fakeWorker({ elapsedMs = 100, failLoad = false } = {}) {
+// failDevice: fail the load message only when msg.device matches (used to
+// simulate WebGPU present-but-broken while WASM still works).
+function fakeWorker({ elapsedMs = 100, failLoad = false, failDevice = null } = {}) {
   const w = {
     onmessage: null,
     terminated: false,
     postMessage(msg) {
       queueMicrotask(() => {
         if (msg.type === 'load') {
-          w.onmessage({ data: failLoad ? { type: 'error', message: 'no backend' } : { type: 'ready' } })
+          const fail = failLoad || msg.device === failDevice
+          w.onmessage({ data: fail ? { type: 'error', message: 'no backend' } : { type: 'ready' } })
         } else if (msg.type === 'transcribe') {
           w.onmessage({ data: { type: 'result', text: 'hello dahican', elapsedMs } })
         }
@@ -18,6 +21,17 @@ function fakeWorker({ elapsedMs = 100, failLoad = false } = {}) {
     terminate() { w.terminated = true },
   }
   return w
+}
+
+function withGpu(fn) {
+  return async () => {
+    globalThis.navigator.gpu = {}
+    try {
+      await fn()
+    } finally {
+      delete globalThis.navigator.gpu
+    }
+  }
 }
 
 beforeEach(() => {
@@ -52,6 +66,25 @@ describe('createTranscriber', () => {
     expect(t.state).toBe('unsupported')
     await expect(t.transcribeBlob(new Blob([new Uint8Array([1])]))).rejects.toThrow(/unsupported/)
   })
+
+  it('webgpu present but broken -> retries wasm and succeeds', withGpu(async () => {
+    const workers = []
+    const t = createTranscriber({
+      createWorker: () => { const w = fakeWorker({ failDevice: 'webgpu' }); workers.push(w); return w },
+    })
+    const { text } = await t.transcribeBlob(new Blob([new Uint8Array([1])]))
+    expect(text).toBe('hello dahican')
+    expect(t.mode).toBe('device')
+    expect(workers.length).toBe(2)
+    expect(workers[0].terminated).toBe(true)
+  }))
+
+  it('webgpu present, both webgpu and wasm loads fail -> unsupported', withGpu(async () => {
+    const t = createTranscriber({ createWorker: () => fakeWorker({ failLoad: true }) })
+    await t.load()
+    expect(t.mode).toBe('unsupported')
+    expect(t.state).toBe('unsupported')
+  }))
 
   it('dispose terminates the worker', async () => {
     const w = fakeWorker()

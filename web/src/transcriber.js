@@ -53,19 +53,32 @@ export function createTranscriber(opts = {}) {
     t.state = t.mode === 'unsupported' ? 'unsupported' : 'idle'
   }
 
+  async function attemptLoad(device) {
+    worker = createWorker()
+    await request({ type: 'load', model, modelBaseUrl, device })
+  }
+
   t.load = function load() {
     if (loadPromise) return loadPromise
     loadPromise = (async () => {
       t.state = 'loading-model'
+      const device = typeof navigator !== 'undefined' && navigator.gpu ? 'webgpu' : 'wasm'
       try {
-        worker = createWorker()
-        const device = typeof navigator !== 'undefined' && navigator.gpu ? 'webgpu' : 'wasm'
-        await request({ type: 'load', model, modelBaseUrl, device })
-        if ((await benchmark()) > slowThresholdMs) degrade()
-        else t.state = 'idle'
+        await attemptLoad(device)
       } catch (e) {
-        degrade()
+        // WebGPU can be present but broken (requestAdapter always fails on some
+        // hardware/browsers) - retry on WASM before giving up. A wasm-first
+        // attempt that fails has nowhere left to retry.
+        if (device !== 'webgpu') return degrade()
+        if (worker) { worker.terminate(); worker = null }
+        try {
+          await attemptLoad('wasm')
+        } catch (e2) {
+          return degrade()
+        }
       }
+      if ((await benchmark()) > slowThresholdMs) degrade()
+      else t.state = 'idle'
     })()
     return loadPromise
   }
