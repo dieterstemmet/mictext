@@ -63,8 +63,8 @@ cd web && npx vite --port 5199
 ```
 
 Open `/demo/index.html`. Vite is required (not a plain static file server)
-to resolve the bare `@huggingface/transformers` import — it's already a
-transitive dev dependency, not added to `dependencies`.
+to resolve the bare `@huggingface/transformers` import — it's a direct
+dependency of this library (see `dependencies` in `package.json`).
 
 ## Slow-device policy (`slowDevice`)
 

@@ -2,6 +2,7 @@ services:
   flex-voice:
     build: .
     container_name: flex-voice
+    restart: unless-stopped
     environment:
       - WHISPER_MODEL=${WHISPER_MODEL:-small.en}
       - API_KEYS=${API_KEYS}
