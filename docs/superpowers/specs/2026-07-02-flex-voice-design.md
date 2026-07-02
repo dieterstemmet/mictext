@@ -13,7 +13,7 @@ Corollary: the transcribed *text* belongs to the host app — in agent-platform 
 ## What this replaces
 
 - agent-platform's shipped push-to-talk currently uploads audio to `POST /api/v1/chat/transcribe` → **Grok cloud STT** (`voice_service.py`). That path violates the constraint and gets retired once the web library is proven.
-- The rev-1 idea of a server-side `stt.flexsolutions.ph` service is dead — deliberately, per the constraint.
+- The rev-1 server-side `stt.flexsolutions.ph` service survives only as the opt-in slow-device fallback (see Slow-device policy) — it is never the default path.
 - agent-platform's `whisper_worker.py` (server-side faster-whisper for *uploaded audio file attachments*) is out of scope: those files were already deliberately uploaded by the user; transcribing them server-side doesn't leak anything new.
 
 ## Repo layout
@@ -24,6 +24,7 @@ One repo, `~/Personal/flex-voice`:
 flex-voice/
   web/              # embeddable JS library — on-device Whisper in the browser
   mac/              # Mac push-to-talk client — whisper.cpp on-device
+  server/           # opt-in slow-device fallback — FastAPI + faster-whisper on prod
   docs/superpowers/specs/
 ```
 
@@ -48,8 +49,12 @@ flex-voice/
 
 **Honest limits (accepted, price of the constraint)**:
 - First use per device downloads the model (~40 MB) and shows a progress state — the API's `loading-model` state and `onProgress` exist for exactly this.
-- Low-end Android (Buhaton crew phones) on WASM will transcribe slower than real-time-ish for long clips; short push-to-talk utterances stay tolerable on `tiny.en`. If it's ever too slow in the field, the escape hatch is a smaller/distilled model — never a server.
+- Low-end Android (Buhaton crew phones) on WASM will transcribe slower than real-time-ish for long clips; short push-to-talk utterances stay tolerable on `tiny.en`.
 - English models default; multilingual = config, not UI, for now.
+
+**Slow-device policy** (Dieter, 2026-07-02): on-device is the default and the only zero-config mode, but a device can be *too slow to be usable*. The library detects this (no-WebGPU + a one-time tiny inference benchmark on model load, threshold configurable) and then follows the host app's `slowDevice` option:
+- `'disable'` (default) — transcriber reports `state: 'unsupported'`; the host app hides/greys the mic. Nothing ever uploads.
+- `'server'` — audio POSTs to a **self-hosted** fallback endpoint (`fallbackUrl` + `fallbackApiKey` required): the rev-1 mini service (FastAPI + faster-whisper, `X-API-Key` auth, `POST /transcribe` → `{text, duration_ms}`, serial semaphore, 25 MB cap) deployed on prod at `stt.flexsolutions.ph`. Audio leaves the device **only** in this explicitly configured mode, and only to Dieter's own server — never a third party. Lives in `flex-voice/server/`.
 
 ## Part W.2 — agent-platform integration (first consumer)
 
@@ -93,4 +98,5 @@ Same constraint applies later: on-device synthesis — Piper (WASM build exists)
 1. `web/` library + demo page → browser-verified (including the zero-upload check).
 2. agent-platform PR: swap `useVoiceInput` internals; backend voice path env-gated off.
 3. Mac client + manual verify (Wi-Fi-off test).
-4. Follow-up agent-platform PR: delete the Grok voice path.
+4. `server/` fallback service → deploy to prod + `stt.flexsolutions.ph` DNS → wire `slowDevice: 'server'` into agent-platform config.
+5. Follow-up agent-platform PR: delete the Grok voice path.
