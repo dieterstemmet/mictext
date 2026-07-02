@@ -9,11 +9,16 @@ import os
 import tempfile
 
 from fastapi import FastAPI, Form, Header, HTTPException, UploadFile
+from starlette.middleware.cors import CORSMiddleware
 
 MODEL_NAME = os.environ.get("WHISPER_MODEL", "small.en")
 MODELS_DIR = os.environ.get("WHISPER_MODELS_DIR", "/models")
 MAX_BYTES = int(os.environ.get("MAX_BYTES", 25 * 1024 * 1024))
 API_KEYS = {k for k in os.environ.get("API_KEYS", "").split(",") if k}
+# ponytail: empty ALLOWED_ORIGINS -> allow_origins=[] -> CORSMiddleware allows
+# no browser origin (fail closed), same posture as an unset API_KEYS locking
+# out /transcribe entirely.
+ALLOWED_ORIGINS = [o for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o]
 
 fastapi_app = FastAPI()
 _model = None
@@ -135,4 +140,14 @@ class UploadGuardMiddleware:
             await _respond(send, 413, "upload too large")
 
 
-app = UploadGuardMiddleware(fastapi_app)
+_guarded_app = UploadGuardMiddleware(fastapi_app)
+# CORSMiddleware wraps outside the guard so it runs first: an OPTIONS
+# preflight (browsers never send X-API-Key on preflight) is answered by CORS
+# directly and never reaches the guard — which only matches POST anyway.
+app = CORSMiddleware(
+    _guarded_app,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["POST"],
+    allow_headers=["X-API-Key"],
+    max_age=3600,
+)

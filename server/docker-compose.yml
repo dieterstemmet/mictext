@@ -1,0 +1,22 @@
+services:
+  flex-voice:
+    build: .
+    container_name: flex-voice
+    environment:
+      - WHISPER_MODEL=${WHISPER_MODEL:-small.en}
+      - API_KEYS=${API_KEYS}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://ai.flexsolutions.ph}
+    volumes:
+      - whisper-models:/models
+    networks: [traefik-public]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.flexvoice.rule=Host(`stt.flexsolutions.ph`)
+      - traefik.http.routers.flexvoice.entrypoints=websecure
+      - traefik.http.routers.flexvoice.tls.certresolver=letsencrypt
+      - traefik.http.services.flexvoice.loadbalancer.server.port=8000
+volumes:
+  whisper-models:
+networks:
+  traefik-public:
+    external: true

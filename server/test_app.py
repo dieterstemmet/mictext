@@ -1,3 +1,6 @@
+import os
+os.environ.setdefault("ALLOWED_ORIGINS", "https://ai.flexsolutions.ph")
+
 import asyncio
 import io
 import pytest
@@ -81,6 +84,26 @@ def test_content_length_over_cap_rejected_before_body_read():
     }
     asyncio.run(appmod.app(scope, receive, send))
     assert sent[0]["status"] == 413
+
+
+def test_preflight_allowed_origin_gets_cors_headers():
+    r = client.options("/transcribe", headers={
+        "Origin": "https://ai.flexsolutions.ph",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "X-API-Key",
+    })
+    assert r.status_code == 200
+    assert r.headers["access-control-allow-origin"] == "https://ai.flexsolutions.ph"
+    assert "x-api-key" in r.headers["access-control-allow-headers"].lower()
+
+
+def test_preflight_disallowed_origin_gets_no_cors_headers():
+    r = client.options("/transcribe", headers={
+        "Origin": "https://evil.example",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "X-API-Key",
+    })
+    assert "access-control-allow-origin" not in r.headers
 
 
 def test_missing_content_length_411():
