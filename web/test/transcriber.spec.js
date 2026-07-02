@@ -60,4 +60,64 @@ describe('createTranscriber', () => {
     t.dispose()
     expect(w.terminated).toBe(true)
   })
+
+  it('two concurrent transcribeBlob calls both resolve with text', async () => {
+    const t = createTranscriber({ createWorker: () => fakeWorker() })
+    const [a, b] = await Promise.all([
+      t.transcribeBlob(new Blob([new Uint8Array([1])])),
+      t.transcribeBlob(new Blob([new Uint8Array([2])])),
+    ])
+    expect(a.text).toBe('hello dahican')
+    expect(b.text).toBe('hello dahican')
+  })
+})
+
+describe('slow-device policy', () => {
+  it("slow benchmark + slowDevice 'disable' -> unsupported", async () => {
+    const t = createTranscriber({ createWorker: () => fakeWorker({ elapsedMs: 9999 }) })
+    await t.load()
+    expect(t.mode).toBe('unsupported')
+  })
+
+  it("slow benchmark + slowDevice 'server' -> POSTs blob to fallbackUrl", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: 'from server', duration_ms: 1200 }),
+    })
+    const t = createTranscriber({
+      createWorker: () => fakeWorker({ elapsedMs: 9999 }),
+      slowDevice: 'server',
+      fallbackUrl: 'https://stt.flexsolutions.ph',
+      fallbackApiKey: 'k1',
+    })
+    const { text } = await t.transcribeBlob(new Blob([new Uint8Array([1])]))
+    expect(text).toBe('from server')
+    const [url, init] = globalThis.fetch.mock.calls[0]
+    expect(url).toBe('https://stt.flexsolutions.ph/transcribe')
+    expect(init.headers['X-API-Key']).toBe('k1')
+    expect(init.body).toBeInstanceOf(FormData)
+  })
+
+  it("slowDevice 'server' without fallbackUrl throws at creation", () => {
+    expect(() => createTranscriber({ slowDevice: 'server' })).toThrow(/fallbackUrl/)
+  })
+
+  it('fast benchmark stays on-device and never calls fetch', async () => {
+    globalThis.fetch = vi.fn()
+    const t = createTranscriber({ createWorker: () => fakeWorker({ elapsedMs: 100 }), slowDevice: 'server', fallbackUrl: 'https://x', fallbackApiKey: 'k' })
+    await t.transcribeBlob(new Blob([new Uint8Array([1])]))
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
+
+  it('omits X-API-Key header when fallbackApiKey is not provided', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ text: 'x' }) })
+    const t = createTranscriber({
+      createWorker: () => fakeWorker({ elapsedMs: 9999 }),
+      slowDevice: 'server',
+      fallbackUrl: 'https://x',
+    })
+    await t.transcribeBlob(new Blob([new Uint8Array([1])]))
+    const [, init] = globalThis.fetch.mock.calls[0]
+    expect(init.headers).not.toHaveProperty('X-API-Key')
+  })
 })

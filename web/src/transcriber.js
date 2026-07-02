@@ -22,16 +22,20 @@ export function createTranscriber(opts = {}) {
   let loadPromise = null
   const t = { state: 'idle', mode: 'device' }
 
-  // One in-flight request at a time; the worker is serial anyway.
+  // Serialize requests: concurrent callers would otherwise clobber onmessage.
+  // ponytail: single promise queue, fine for a serial worker.
+  let queue = Promise.resolve()
   function request(msg, transfer) {
-    return new Promise((resolve, reject) => {
+    const p = queue.then(() => new Promise((resolve, reject) => {
       worker.onmessage = ({ data }) => {
         if (data.type === 'progress') { if (onProgress) onProgress(data.progress); return }
         if (data.type === 'error') reject(new Error(data.message))
         else resolve(data)
       }
       worker.postMessage(msg, transfer)
-    })
+    }))
+    queue = p.catch(() => {})
+    return p
   }
 
   async function benchmark() {
@@ -71,7 +75,7 @@ export function createTranscriber(opts = {}) {
     form.append('audio', blob, 'clip.webm')
     const r = await fetch(`${fallbackUrl}/transcribe`, {
       method: 'POST',
-      headers: { 'X-API-Key': fallbackApiKey },
+      headers: fallbackApiKey ? { 'X-API-Key': fallbackApiKey } : {},
       body: form,
     })
     if (!r.ok) throw new Error(`fallback transcription failed (${r.status})`)
