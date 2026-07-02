@@ -1,0 +1,12 @@
+{
+  "name": "flex-voice",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./mic": "./src/mic-element.js"
+  },
+  "scripts": { "test": "vitest run" },
+  "dependencies": { "@huggingface/transformers": "^3.5.0" },
+  "devDependencies": { "vitest": "^3.0.0", "happy-dom": "^17.0.0" }
+}
