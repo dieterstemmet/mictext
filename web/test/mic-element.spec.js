@@ -12,8 +12,9 @@ vi.mock('../src/transcriber.js', () => ({ createTranscriber: vi.fn(() => transcr
 // Import AFTER the mock so the element sees the mocked factory.
 await import('../src/mic-element.js')
 
+let track
 function fakeMedia() {
-  const track = { stop: vi.fn() }
+  track = { stop: vi.fn() }
   globalThis.navigator.mediaDevices = {
     getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }),
   }
@@ -59,5 +60,24 @@ describe('<flex-voice-mic>', () => {
     document.body.appendChild(el)
     await new Promise((r) => setTimeout(r, 10))
     expect(el.hidden).toBe(true)
+  })
+
+  it('stops mic tracks on release', async () => {
+    const el = document.createElement('flex-voice-mic')
+    document.body.appendChild(el)
+    el.dispatchEvent(new Event('pointerdown'))
+    await new Promise((r) => setTimeout(r, 10))
+    el.dispatchEvent(new Event('pointerup'))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(track.stop).toHaveBeenCalled()
+  })
+
+  it('stops mic tracks when disconnected mid-recording', async () => {
+    const el = document.createElement('flex-voice-mic')
+    document.body.appendChild(el)
+    el.dispatchEvent(new Event('pointerdown'))
+    await new Promise((r) => setTimeout(r, 10))
+    el.remove()
+    expect(track.stop).toHaveBeenCalled()
   })
 })
