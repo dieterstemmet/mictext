@@ -1,23 +1,20 @@
-# flex-voice — self-hosted speech-to-text service + Mac dictation client
+# flex-voice — on-device speech-to-text, embeddable everywhere
 
-**Date**: 2026-07-02
+**Date**: 2026-07-02 (rev 2 — on-device pivot)
 **Status**: Awaiting Dieter's review
-**Scope**: v1 = (A) standalone Whisper STT service on the prod server + agent-platform switched to it, and (C) a thin Mac push-to-talk dictation client. TTS ("talk back") is a designed-for but out-of-scope sibling.
+**Scope**: v1 = (W) an embeddable browser library that runs Whisper fully on-device, wired into agent-platform first, and (C) a Mac push-to-talk dictation client running whisper.cpp on-device. TTS ("talk back") is a designed-for later sibling.
 
-## Goal
+## The hard constraint
 
-One self-owned, local (self-hosted, no third-party cloud) transcription service that every Flex app can call, plus a Wispr-Flow-style desktop client so Dieter can dictate into *any* Mac app. Agent-platform is the first consumer — its existing push-to-talk UI stays, only the STT provider changes from Grok cloud to this service.
+**Voice audio never leaves the device it was spoken on.** Transcription runs locally wherever the mic is: in the browser for web apps, on the Mac for desktop dictation. There is no transcription server, no cloud STT, no fallback that uploads audio. The one-time *inbound* model download (cached forever after) is allowed — nothing outbound.
 
-## What already exists (reused, not rebuilt)
+Corollary: the transcribed *text* belongs to the host app — in agent-platform it is sent to chat exactly like typed text. The privacy boundary is the audio.
 
-- **agent-platform push-to-talk** is fully shipped: `VoiceRecorder.vue` + `useVoiceInput.js` → `POST /api/v1/chat/transcribe` → `voice_service.py` (currently Grok STT). The frontend is untouched by this project.
-- **faster-whisper already runs on the prod server** inside agent-platform's `whisper_worker.py` (attachment transcription, `medium.en`, CPU int8, serial queue). This proves the engine on the box; flex-voice lifts the same engine into a standalone service.
+## What this replaces
 
-## Assumptions (flag if wrong)
-
-1. "Local" = self-hosted on the prod server (5.223.51.1), not offline-on-laptop. The Mac client needs internet.
-2. Mac client v1 is a thin client of the service (no on-device model). On-device whisper.cpp is a possible v2 if offline dictation is ever needed.
-3. No Wispr-Flow-style AI reformatting/tone-matching in v1 — raw Whisper transcripts. Add a post-processing LLM pass later only if raw quality annoys in practice.
+- agent-platform's shipped push-to-talk currently uploads audio to `POST /api/v1/chat/transcribe` → **Grok cloud STT** (`voice_service.py`). That path violates the constraint and gets retired once the web library is proven.
+- The rev-1 idea of a server-side `stt.flexsolutions.ph` service is dead — deliberately, per the constraint.
+- agent-platform's `whisper_worker.py` (server-side faster-whisper for *uploaded audio file attachments*) is out of scope: those files were already deliberately uploaded by the user; transcribing them server-side doesn't leak anything new.
 
 ## Repo layout
 
@@ -25,65 +22,75 @@ One repo, `~/Personal/flex-voice`:
 
 ```
 flex-voice/
-  service/          # FastAPI + faster-whisper (Docker, prod server)
-  mac/              # Hammerspoon-based push-to-talk client (v1)
+  web/              # embeddable JS library — on-device Whisper in the browser
+  mac/              # Mac push-to-talk client — whisper.cpp on-device
   docs/superpowers/specs/
 ```
 
-## Part A — the service
+## Part W — browser library (`flex-voice/web`)
 
-**Stack**: FastAPI + faster-whisper, single container, Docker Compose on the prod server behind Traefik at `stt.flexsolutions.ph` (standard Route53 A-record recipe → 5.223.51.1).
+**Engine**: Whisper via `@huggingface/transformers` (transformers.js) in a **Web Worker** — WebGPU when available, WASM fallback. Battle-tested (this is what whisper-web is built on), no server component.
 
-**Endpoints**:
-- `POST /transcribe` — multipart `audio` file (+ optional `language` form field, default `en`) → `{ "text": str, "duration_ms": int }`. Auth: `X-API-Key` header checked against `API_KEYS` env (comma-separated, one key per consuming app so a leaked key is revocable alone).
-- `GET /health` — model loaded + version; no auth (Traefik-internal for smoke checks).
-- `/tts` — **not built in v1.** Reserved path; Piper TTS slots in later without reshaping anything.
+**Model**: `whisper-base.en` quantized (~40 MB) as the default — the interactive sweet spot. `tiny.en` (~20 MB) selectable for weak devices, `small.en` for accuracy. Downloaded once, cached by the browser (Cache API), so it's a one-time cost per device. Model files fetched from HF CDN by default; each app *may* self-host the model files as static assets for full CDN independence — supported via a `modelBaseUrl` option, not required for v1.
 
-**Engine config** (env, mirrors agent-platform's proven knobs):
-- `WHISPER_MODEL=small.en` — interactive latency matters; a 10 s clip ≈ 1–2 s on this CPU. `medium.en` stays available by env for accuracy-first consumers.
-- `int8` compute, CPU, model cached in a named volume (downloaded on first run).
-- **Serial transcription** via a global asyncio semaphore(1) — same hard requirement as the existing worker: two concurrent jobs OOM the box. Requests queue briefly rather than fork memory. `ponytail:` global lock; per-model worker pool only if real contention shows up.
+**Public API** — two layers so apps with existing UI aren't forced into ours:
 
-**Guards**: 25 MB upload cap (413), empty upload (400), bad/missing key (401), busy-timeout returns 503 with Retry-After rather than piling up.
+1. **Headless core** (what agent-platform uses):
+   ```js
+   const t = await createTranscriber({ model?, language?, modelBaseUrl?, onProgress? })
+   t.start()                    // begins mic capture (getUserMedia)
+   const { text } = await t.stop()   // ends capture, resolves transcript
+   t.state                      // 'loading-model' | 'idle' | 'recording' | 'transcribing'
+   ```
+2. **Drop-in element** `<flex-voice-mic>` (framework-agnostic web component wrapping the core): hold-to-record button, fires a `transcript` CustomEvent. This is the "embed in any future app" one-liner — Buhaton, customer-to-kitchen, etc.
 
-**Ops**: joins the existing compose/Traefik pattern on the server; logs to stdout; no DB, no state beyond the model cache — nothing to back up.
+**Packaging**: plain npm package in the repo, consumed via a local file/git dependency by his apps (no public npm publish needed for v1). `ponytail:` no bundler gymnastics — ship ESM only; every consumer is a modern Vite app.
 
-## Part A.2 — agent-platform integration (first consumer)
+**Honest limits (accepted, price of the constraint)**:
+- First use per device downloads the model (~40 MB) and shows a progress state — the API's `loading-model` state and `onProgress` exist for exactly this.
+- Low-end Android (Buhaton crew phones) on WASM will transcribe slower than real-time-ish for long clips; short push-to-talk utterances stay tolerable on `tiny.en`. If it's ever too slow in the field, the escape hatch is a smaller/distilled model — never a server.
+- English models default; multilingual = config, not UI, for now.
 
-- New config: `VOICE_STT_PROVIDER` (`grok` | `local`, default `grok` until verified), `LOCAL_STT_URL`, `LOCAL_STT_API_KEY`.
-- `voice_service.transcribe()` branches on provider: `local` → httpx multipart POST to the service, same `TranscriptionResult` shape. Grok path untouched = instant rollback via env.
-- Cost `Run` row still written for `local` with `cost_usd=0.0`, `provider="flex-voice"` — keeps voice usage visible on the ledger.
-- Frontend: zero changes.
-- Later (separate, optional): point `whisper_worker.py` at the service too and drop the in-container model (~saves image size + RAM). Not v1.
+## Part W.2 — agent-platform integration (first consumer)
 
-## Part C — Mac dictation client
+- `useVoiceInput.js` swaps its internals: instead of POSTing the blob to `/chat/transcribe`, it calls the headless `createTranscriber()` from `flex-voice/web`. `VoiceRecorder.vue` (button, states, gestures) is unchanged; its `transcribing` state maps onto model-loading + inference.
+- Transcript still lands in the composer as editable text, never auto-sends — behavior identical, provider now on-device.
+- Backend: `POST /chat/transcribe`, `voice_service.py`, and the `VOICE_*` Grok config are retired in a follow-up PR once the browser path is live-verified (kept during transition as an env-gated fallback, then deleted — no dead code left).
+- No cost `Run` rows anymore — on-device costs $0 and touches no provider. Voice disappears from the spend ledger by design.
 
-**v1 = Hammerspoon script + ffmpeg** (`brew install hammerspoon ffmpeg`), ~100 lines of Lua in `mac/`:
+## Part C — Mac dictation client (`flex-voice/mac`)
 
-- Hold a global hotkey (default `F13`/right-⌥ — configurable at the top of the file) → start `ffmpeg -f avfoundation` mic capture to a temp file; menu-bar icon turns red.
-- Release → stop capture, `hs.http` POST to `https://stt.flexsolutions.ph/transcribe`, then `hs.eventtap.keyStrokes(text)` types the transcript into whatever app has focus.
-- Taps <300 ms are cancels (no accidental empty clips). Errors show a brief `hs.alert`, never type anything.
-- API key + URL live in `~/.flex-voice` (chmod 600) — never in the script or repo, per the secrets rule.
-- `ponytail:` Hammerspoon is the ceiling for v1 — if daily use sticks and wants a nicer UX (waveform, history, on-device model), the upgrade path is a small Swift menu-bar app against the same endpoint.
+**v1 = Hammerspoon + whisper.cpp**, fully on-device (`brew install hammerspoon whisper-cpp ffmpeg`), ~100 lines of Lua:
 
-**Failure mode is benign**: worst case nothing is typed and an alert shows; there is no auto-send anywhere.
+- Hold a global hotkey (default right-⌥, configurable at the top of the file) → `ffmpeg -f avfoundation` mic capture to a temp wav; menu-bar icon turns red.
+- Release → run `whisper-cli` (Metal-accelerated on Apple Silicon, `base.en` model, ~real-time or faster) → `hs.eventtap.keyStrokes(text)` types the transcript into whatever app has focus. Temp wav deleted immediately after.
+- Taps <300 ms cancel. Errors show a brief `hs.alert`, never type anything. No network access at all.
+- Model file lives at `~/.flex-voice/models/` (one-time `whisper-cli` download or curl in the install script).
+- `ponytail:` Hammerspoon is the v1 ceiling — upgrade path is a small Swift menu-bar app (nicer UX, waveform, streaming) against the same whisper.cpp, only if daily use earns it.
+
+**Failure mode is benign**: worst case nothing is typed and an alert shows; no auto-send anywhere.
+
+## TTS / talk-back (out of scope, designed for)
+
+Same constraint applies later: on-device synthesis — Piper (WASM build exists) in the browser, `say`/Piper on the Mac. The web library reserves a `createSpeaker()` sibling; nothing in v1 blocks it.
 
 ## Testing
 
-- **Service**: pytest — auth (401), size cap (413), empty (400), happy path with the model call stubbed; plus one real end-to-end `curl` with a short wav on the server before flipping agent-platform's provider.
-- **agent-platform**: existing `voice_service` tests extended with the `local` provider branch (httpx mocked). Eval gate untouched (no routing change).
-- **Mac client**: manual — dictate a sentence with local vocabulary ("Dahican", "Mati") into Notes and into ai.flexsolutions.ph via the browser; verify hold/release, cancel-tap, and the error alert with the service stopped.
-- **Live verification** uses a dedicated `mac-client` API key, not agent-platform's.
+- **web**: vitest with the worker + transformers mocked — state machine, start/stop produces audio → transcript, error paths. One real browser check (per browser-testing convention): Playwright/Chrome against a demo page in `web/` — hold, speak, release, assert text appears; verify the network tab shows **zero uploads** (model download only).
+- **agent-platform**: existing `useVoiceInput` specs rewired to mock the library; manual live check on ai.flexsolutions.ph with the playwright-bot account — dictate "Dahican", confirm composer fills, confirm no `/transcribe` request fires.
+- **mac**: manual — dictate into Notes and into the browser; verify cancel-tap, error alert, and (with Wi-Fi off) that dictation still works — the on-device proof.
 
 ## Out of scope (v1)
 
-- TTS / talk-back (Piper sibling endpoint, next iteration).
-- On-device Mac whisper.cpp; Linux/Windows clients.
-- Shared frontend mic component — extract from agent-platform's Vue recorder only when a second web app needs a mic.
-- Wake word / always-listening; real-time streaming transcription; AI reformatting of transcripts.
+- TTS / talk-back; wake word / always-listening; streaming partial transcripts.
+- Windows/Linux desktop clients.
+- Retiring `whisper_worker.py` (attachment transcription) — separate concern, unaffected.
+- AI reformatting of transcripts (Wispr-Flow-style tone matching).
+- Public npm publish, versioning ceremony, CI for the lib — add when a second app consumes it.
 
 ## Build order
 
-1. Service skeleton + tests → deploy to server → DNS + Traefik → real-curl verify.
-2. agent-platform provider switch (PR against master, normal CI + manual deploy).
-3. Mac client script → manual verify.
+1. `web/` library + demo page → browser-verified (including the zero-upload check).
+2. agent-platform PR: swap `useVoiceInput` internals; backend voice path env-gated off.
+3. Mac client + manual verify (Wi-Fi-off test).
+4. Follow-up agent-platform PR: delete the Grok voice path.
