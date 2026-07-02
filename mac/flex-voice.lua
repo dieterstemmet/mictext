@@ -15,43 +15,47 @@ local function bin(name)
   return name
 end
 
-local recTask, downAt = nil, nil
+local recTask, downAt, cancelled = nil, nil, false
 local menubar = hs.menubar.new()
 local function setIcon(rec) menubar:setTitle(rec and "🔴" or "🎙") end
 setIcon(false)
 
+local function transcribe()
+  local task = hs.task.new(bin("whisper-cli"), function(code, stdout, stderr)
+    os.remove(WAV)
+    if code ~= 0 then
+      hs.alert.show("flex-voice: transcription failed")
+      return
+    end
+    local text = stdout:gsub("^%s+", ""):gsub("%s+$", "")
+    if #text > 0 then hs.eventtap.keyStrokes(text) end
+  end, { "-m", MODEL, "-f", WAV, "-nt", "-np" })
+  task:start()
+end
+
 local function startRecording()
+  if recTask then return end
   downAt = hs.timer.secondsSinceEpoch()
+  cancelled = false
   os.remove(WAV)
+  -- Exit callback fires only once ffmpeg has actually exited (graceful SIGTERM
+  -- from terminate() finalizes the wav header first) -- no guessed sleep.
   recTask = hs.task.new(bin("ffmpeg"),
-    nil,
+    function(code, stdout, stderr)
+      recTask = nil
+      if cancelled then os.remove(WAV); return end
+      transcribe()
+    end,
     { "-y", "-f", "avfoundation", "-i", ":0", "-ar", "16000", "-ac", "1", WAV })
   recTask:start()
   setIcon(true)
 end
 
-local function transcribe()
-  local out, ok = hs.execute(
-    bin("whisper-cli") .. " -m " .. MODEL .. " -f " .. WAV .. " -nt -np 2>/dev/null")
-  os.remove(WAV)
-  if not ok then
-    hs.alert.show("flex-voice: transcription failed")
-    return
-  end
-  local text = out:gsub("^%s+", ""):gsub("%s+$", "")
-  if #text > 0 then hs.eventtap.keyStrokes(text) end
-end
-
 local function stopRecording()
   if not recTask then return end
-  local cancelled = (hs.timer.secondsSinceEpoch() - downAt) * 1000 < MIN_MS
-  -- SIGTERM = ffmpeg graceful quit: it finalizes the wav header before exiting.
+  cancelled = (hs.timer.secondsSinceEpoch() - downAt) * 1000 < MIN_MS
   recTask:terminate()
-  recTask = nil
   setIcon(false)
-  if cancelled then os.remove(WAV); return end
-  -- Give ffmpeg a beat to flush, then transcribe off the hotkey path.
-  hs.timer.doAfter(0.3, transcribe)
 end
 
 M.tap = hs.eventtap.new({ hs.eventtap.event.types.flagsChanged }, function(e)

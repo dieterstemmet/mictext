@@ -85,6 +85,12 @@ These tests confirm the setup works end-to-end. Perform them on a Mac with the H
 - **Model download failed**: Ensure you have internet, then run `mac/install.sh` again. The HuggingFace URL redirects; curl should handle it with `-L`.
 - **Transcription says "failed"**: Ensure ffmpeg recorded audio (check `/tmp/flex-voice.wav` exists during recording). Check model file at `~/.flex-voice/models/ggml-base.en.bin`.
 
+## Known Limitations
+
+- **Holding both option keys**: pressing left and right ⌥ together can confuse the start/stop detection (the flagsChanged event only reports the combined modifier state). If dictation gets stuck, release both option keys and retry.
+- **Cancel window under load**: the <300ms cancel window is measured at the moment the release event's callback runs, not at physical key-up. Under heavy system load, a genuine quick tap could occasionally be misjudged as a real recording (or vice versa).
+- **Menubar icon**: the module assumes `hs.menubar.new()` succeeds. On some macOS configurations (e.g. menubar full/hidden) the icon may not be visible even though the hotkey still works.
+
 ## Architecture
 
 - **ffmpeg** captures audio from the Mac's microphone
