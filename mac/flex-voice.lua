@@ -7,6 +7,9 @@ local MODEL = HOME .. "/.flex-voice/models/ggml-base.en.bin"
 local WAV = "/tmp/flex-voice.wav"
 local RIGHT_OPT = 61 -- keycode for right option
 local MIN_MS = 300   -- taps shorter than this are cancels
+-- avfoundation input device by name (index :0 may be a virtual/silent device).
+-- List devices: ffmpeg -f avfoundation -list_devices true -i ""
+local MIC = "MacBook Pro Microphone"
 
 local function bin(name)
   for _, p in ipairs({ "/opt/homebrew/bin/", "/usr/local/bin/" }) do
@@ -46,10 +49,7 @@ local function startRecording()
       if cancelled then os.remove(WAV); return end
       transcribe()
     end,
-    -- Device by name, not index: index :0 may be a virtual/silent device
-    -- (e.g. "Microsoft Teams Audio"). Change MIC to another listed name if needed:
-    --   ffmpeg -f avfoundation -list_devices true -i ""
-    { "-y", "-f", "avfoundation", "-i", ":MacBook Pro Microphone", "-ar", "16000", "-ac", "1", WAV })
+    { "-y", "-f", "avfoundation", "-i", ":" .. MIC, "-ar", "16000", "-ac", "1", WAV })
   recTask:start()
   setIcon(true)
 end
