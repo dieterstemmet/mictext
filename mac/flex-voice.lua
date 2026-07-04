@@ -46,7 +46,10 @@ local function startRecording()
       if cancelled then os.remove(WAV); return end
       transcribe()
     end,
-    { "-y", "-f", "avfoundation", "-i", ":0", "-ar", "16000", "-ac", "1", WAV })
+    -- Device by name, not index: index :0 may be a virtual/silent device
+    -- (e.g. "Microsoft Teams Audio"). Change MIC to another listed name if needed:
+    --   ffmpeg -f avfoundation -list_devices true -i ""
+    { "-y", "-f", "avfoundation", "-i", ":MacBook Pro Microphone", "-ar", "16000", "-ac", "1", WAV })
   recTask:start()
   setIcon(true)
 end
