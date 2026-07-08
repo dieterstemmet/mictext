@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240" role="img" aria-label="MicText logo: a microphone whose grille is lines of text ending in a red caret">
+  <!-- capsule -->
+  <rect x="66" y="24" width="108" height="132" rx="54" fill="#F2EFE7"/>
+  <!-- grille = lines of text -->
+  <g stroke="#1A1D24" stroke-width="9" stroke-linecap="round">
+    <line x1="90" y1="58"  x2="150" y2="58"/>
+    <line x1="90" y1="80"  x2="138" y2="80"/>
+    <line x1="90" y1="102" x2="146" y2="102"/>
+    <line x1="90" y1="124" x2="116" y2="124"/>
+  </g>
+  <!-- the caret: text being typed, live -->
+  <rect x="126" y="117" width="8" height="15" rx="2" fill="#FF4D3D"/>
+  <!-- cradle + stem + base -->
+  <g stroke="#F2EFE7" stroke-width="11" stroke-linecap="round" fill="none">
+    <path d="M 50 112 a 70 70 0 0 0 140 0"/>
+    <line x1="120" y1="182" x2="120" y2="206"/>
+    <line x1="90" y1="212" x2="150" y2="212"/>
+  </g>
+</svg>

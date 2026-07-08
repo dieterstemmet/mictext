@@ -1,6 +1,21 @@
-# MicText
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo.svg" width="180" alt="MicText: a microphone whose grille is lines of text, ending in a red caret">
+  </picture>
+</p>
 
-On-device speech-to-text. Your audio never leaves your machine.
+<h1 align="center">MicText</h1>
+
+<p align="center">
+  <em>Hold a key. Speak. Text appears — and your audio never leaves your machine.</em>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/mictext"><img src="https://img.shields.io/npm/v/mictext?style=flat-square&color=1A1D24&label=npm" alt="npm"></a>
+  <img src="https://img.shields.io/badge/audio-never%20leaves%20your%20machine-FF4D3D?style=flat-square" alt="On-device">
+  <img src="https://img.shields.io/badge/license-MIT-1A1D24?style=flat-square" alt="MIT license">
+</p>
 
 MicText is an embeddable STT library for the web plus reference
 push-to-talk dictation clients for macOS and Windows, all running
