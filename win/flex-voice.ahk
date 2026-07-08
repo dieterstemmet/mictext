@@ -30,7 +30,7 @@ StartRecording() {
     mic := ""
     try mic := Trim(FileRead(MIC_FILE), " `t`r`n")
     if (mic = "") {
-        TrayTip("flex-voice", "No mic configured - run install.ps1")
+        TrayTip("No mic configured - run install.ps1", "flex-voice")
         return
     }
     downAt := A_TickCount
@@ -59,7 +59,7 @@ Transcribe() {
     ; wrap raw pcm into a wav whisper-cli can read
     if RunWait('ffmpeg -y -f s16le -ar 16000 -ac 1 -i "' RAW '" "' WAV '"', , "Hide") != 0 {
         Cleanup()
-        TrayTip("flex-voice", "transcription failed")
+        TrayTip("transcription failed", "flex-voice")
         return
     }
     code := RunWait(A_ComSpec ' /c ""' WHISPER '" -m "' MODEL '" -f "' WAV '" -nt -np > "' OUT '""', , "Hide")
@@ -68,7 +68,7 @@ Transcribe() {
         try text := Trim(FileRead(OUT, "UTF-8"), " `t`r`n")
     Cleanup()
     if (code != 0) {
-        TrayTip("flex-voice", "transcription failed")
+        TrayTip("transcription failed", "flex-voice")
         return
     }
     if (text != "")
