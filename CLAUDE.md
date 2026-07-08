@@ -1,6 +1,6 @@
 # MicText
 
-On-device speech-to-text — audio never leaves the machine. Embeddable STT library for the web (`npm i mictext`: Whisper in a Web Worker, WebGPU → WASM) plus reference push-to-talk dictation clients for macOS and Windows running whisper.cpp locally. Integration target: agent-platform (PR #240 was the first integration, via a vendored copy; the npm publish root-causes that). Open-source release (MIT) and the Windows client landed 2026-07-08; "push-to-type" is the planned UX direction, growing toward voice-assistant frontends (specs in `docs/superpowers/`).
+On-device speech-to-text — audio never leaves the machine. Embeddable STT library for the web (`npm i mictext`: Whisper in a Web Worker, WebGPU → WASM) plus reference push-to-talk dictation clients for macOS and Windows running whisper.cpp locally. Integration target: agent-platform (PR #240 was the first integration, via a vendored copy; the npm publish root-causes that). Open-source release (MIT) and the Windows client landed 2026-07-08; "push-to-type" is the planned UX direction, growing toward voice-assistant frontends.
 
 **Privacy is the product.** With defaults, no code path here POSTs audio or transcripts anywhere — only GETs model files (verified with full network logging, see `web/README.md`). Any change that sends audio or transcripts off-device is a design violation — flag it. Sole exception: the web library's explicit `slowDevice: 'server'` opt-in to a fallback URL the user configures.
 
@@ -27,7 +27,6 @@ powershell -ExecutionPolicy Bypass -File win\install.ps1  # AutoHotkey v2 + ffmp
 - `mac/` — macOS client: hold right-⌥, speak, text typed at cursor. One Hammerspoon module (`mictext.lua`) + `install.sh`.
 - `win/` — Windows client: hold Right Ctrl. `mictext.ahk` (AutoHotkey v2) + `install.ps1`.
 - `server/` — optional self-hosted fallback (FastAPI + faster-whisper) for the explicit `slowDevice: 'server'` opt-in only. Audio transcribed in memory, never persisted.
-- `docs/superpowers/{specs,plans}/` — dated per-feature design docs.
 
 ## Gotchas
 
