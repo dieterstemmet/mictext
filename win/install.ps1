@@ -11,9 +11,10 @@ New-Item -ItemType Directory -Force -Path "$base\models", "$base\bin" | Out-Null
 winget install --id AutoHotkey.AutoHotkey -e --accept-source-agreements --accept-package-agreements
 winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements
 
-# AutoHotkey isn't on PATH; verify the standard install location
-$ahkExe = "$env:ProgramFiles\AutoHotkey\v2\AutoHotkey64.exe"
-if (-not (Test-Path $ahkExe)) { throw "AutoHotkey v2 not found after winget install" }
+# AutoHotkey isn't on PATH; verify the standard install locations (machine + per-user)
+$ahkExe = @("$env:ProgramFiles\AutoHotkey\v2\AutoHotkey64.exe",
+            "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $ahkExe) { throw "AutoHotkey v2 not found after winget install" }
 
 # winget PATH updates don't reach this session; resolve ffmpeg directly
 $ffmpeg = (Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
@@ -38,7 +39,9 @@ if (-not (Test-Path $model)) {
 }
 
 # --- detect mic (first dshow audio device) --------------------------------
+$ErrorActionPreference = 'Continue'  # PS 5.1: 2>&1 from native commands throws under 'Stop'
 $devices = & $ffmpeg -hide_banner -list_devices true -f dshow -i dummy 2>&1 | Out-String
+$ErrorActionPreference = 'Stop'
 $mic = [regex]::Match($devices, '"([^"]+)"\s+\(audio\)').Groups[1].Value
 if ($mic) {
     Set-Content -Path "$base\mic.txt" -Value $mic -NoNewline -Encoding utf8
