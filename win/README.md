@@ -70,7 +70,7 @@ These tests confirm the setup works end-to-end. Perform them on a Windows 10/11 
 - [ ] **Test 6: Error handling**
   - Rename or delete `%USERPROFILE%\.flex-voice\models\ggml-base.en.bin`
   - Try to dictate by holding Right Ctrl and speaking
-  - A tray notification appears: "flex-voice: transcription failed"
+  - A Windows notification appears, titled **flex-voice** with the message **transcription failed**
   - Nothing is typed
   - (Restore the model by running `win\install.ps1` again)
 
