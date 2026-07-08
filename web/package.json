@@ -1,7 +1,16 @@
 {
   "name": "flex-voice",
   "version": "0.1.0",
+  "description": "On-device speech-to-text for the browser: Whisper in a Web Worker over WebGPU/WASM, zero audio upload",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dieterstemmet/flex-voice.git",
+    "directory": "web"
+  },
+  "keywords": ["speech-to-text", "stt", "whisper", "on-device", "webgpu", "wasm", "dictation", "transcription"],
+  "files": ["src", "README.md"],
   "exports": {
     ".": "./src/index.js",
     "./mic": "./src/mic-element.js"
