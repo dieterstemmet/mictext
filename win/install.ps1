@@ -2,6 +2,7 @@
 # flex-voice Windows installer: AutoHotkey v2 + ffmpeg + whisper.cpp + model.
 # Idempotent - safe to re-run.
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false  # PS 7.3+: winget/ffmpeg exit non-zero by design; don't trap native exit codes
 
 $base = "$env:USERPROFILE\.flex-voice"
 New-Item -ItemType Directory -Force -Path "$base\models", "$base\bin" | Out-Null
@@ -9,6 +10,10 @@ New-Item -ItemType Directory -Force -Path "$base\models", "$base\bin" | Out-Null
 # --- AutoHotkey v2 + ffmpeg via winget -----------------------------------
 winget install --id AutoHotkey.AutoHotkey -e --accept-source-agreements --accept-package-agreements
 winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements
+
+# AutoHotkey isn't on PATH; verify the standard install location
+$ahkExe = "$env:ProgramFiles\AutoHotkey\v2\AutoHotkey64.exe"
+if (-not (Test-Path $ahkExe)) { throw "AutoHotkey v2 not found after winget install" }
 
 # winget PATH updates don't reach this session; resolve ffmpeg directly
 $ffmpeg = (Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
