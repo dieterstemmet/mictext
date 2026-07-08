@@ -1,4 +1,4 @@
-# flex-voice (web)
+# MicText (web)
 
 On-device speech-to-text for the browser: audio never leaves the machine
 unless you explicitly opt into a server fallback for slow devices. Runs
@@ -8,7 +8,7 @@ Whisper (`onnx-community/whisper-base.en`, quantized) via
 ## Layer 1: headless core (`createTranscriber`)
 
 ```js
-import { createTranscriber } from 'flex-voice'
+import { createTranscriber } from 'mictext'
 
 const t = createTranscriber({
   model = 'onnx-community/whisper-base.en',
@@ -30,15 +30,15 @@ t.dispose()      // terminates the worker
 
 Use this layer directly if you're building your own UI/hold-to-talk logic.
 
-## Layer 2: `<flex-voice-mic>` web component
+## Layer 2: `<mictext-mic>` web component
 
 ```html
 <script type="module">
-  import 'flex-voice/mic'
+  import 'mictext/mic'
   addEventListener('transcript', (e) => console.log(e.detail.text))
   addEventListener('voice-error', (e) => alert(e.detail.message))
 </script>
-<flex-voice-mic model="onnx-community/whisper-base.en" slow-device="disable"></flex-voice-mic>
+<mictext-mic model="onnx-community/whisper-base.en" slow-device="disable"></mictext-mic>
 ```
 
 Hold the button (pointerdown), speak, release (pointerup) — a `transcript`
@@ -58,7 +58,7 @@ The element hides itself (`hidden = true`) if the device is degraded to
 
 ## Demo
 
-From a clone of [the repo](https://github.com/dieterstemmet/flex-voice) (the
+From a clone of [the repo](https://github.com/dieterstemmet/mictext) (the
 demo isn't shipped in the npm package):
 
 ```bash
@@ -77,7 +77,7 @@ is judged too slow to run Whisper locally and the policy below applies:
 
 | `slowDevice` | Behavior on a slow/unsupported device |
 | --- | --- |
-| `'disable'` (default) | `t.mode = 'unsupported'`, `t.state = 'unsupported'`. `transcribeBlob()` rejects. `<flex-voice-mic>` hides itself. No audio ever leaves the device — appropriate when you have no fallback endpoint. |
+| `'disable'` (default) | `t.mode = 'unsupported'`, `t.state = 'unsupported'`. `transcribeBlob()` rejects. `<mictext-mic>` hides itself. No audio ever leaves the device — appropriate when you have no fallback endpoint. |
 | `'server'` | `t.mode = 'server'`. `transcribeBlob()` uploads the audio blob to `${fallbackUrl}/transcribe` (`multipart/form-data`, `X-API-Key: fallbackApiKey`) instead of running it locally. Requires `fallbackUrl`; throws at construction time otherwise. This is the only path in this library that ever sends audio over the network. |
 
 Device selection (`'webgpu'` vs `'wasm'`) is a simple `navigator.gpu`

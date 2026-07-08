@@ -2,7 +2,7 @@ import { createTranscriber } from './transcriber.js'
 
 const CANCEL_MS = 300
 
-class FlexVoiceMic extends HTMLElement {
+class MicTextMic extends HTMLElement {
   connectedCallback() {
     this._disconnected = false
     if (this.shadowRoot) return // reconnect: shadow root + listeners already set up
@@ -103,4 +103,4 @@ class FlexVoiceMic extends HTMLElement {
   }
 }
 
-if (!customElements.get('flex-voice-mic')) customElements.define('flex-voice-mic', FlexVoiceMic)
+if (!customElements.get('mictext-mic')) customElements.define('mictext-mic', MicTextMic)

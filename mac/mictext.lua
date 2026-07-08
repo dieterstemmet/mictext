@@ -1,10 +1,10 @@
--- flex-voice: hold right-option, speak, release -> text typed at the cursor.
+-- MicText: hold right-option, speak, release -> text typed at the cursor.
 -- Fully on-device: ffmpeg records, whisper.cpp transcribes, nothing leaves the Mac.
 local M = {}
 
 local HOME = os.getenv("HOME")
-local MODEL = HOME .. "/.flex-voice/models/ggml-base.en.bin"
-local WAV = "/tmp/flex-voice.wav"
+local MODEL = HOME .. "/.mictext/models/ggml-base.en.bin"
+local WAV = "/tmp/mictext.wav"
 local RIGHT_OPT = 61 -- keycode for right option
 local MIN_MS = 300   -- taps shorter than this are cancels
 -- avfoundation input device by name (index :0 may be a virtual/silent device).
@@ -27,7 +27,7 @@ local function transcribe()
   local task = hs.task.new(bin("whisper-cli"), function(code, stdout, stderr)
     os.remove(WAV)
     if code ~= 0 then
-      hs.alert.show("flex-voice: transcription failed")
+      hs.alert.show("MicText: transcription failed")
       return
     end
     local text = stdout:gsub("^%s+", ""):gsub("%s+$", "")

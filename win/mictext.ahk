@@ -1,22 +1,22 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
-; flex-voice: hold Right Ctrl, speak, release -> text typed at the cursor.
+; MicText: hold Right Ctrl, speak, release -> text typed at the cursor.
 ; Fully on-device: ffmpeg records, whisper.cpp transcribes, nothing leaves the PC.
 
 ; -- config ------------------------------------------------------------------
 HOLD_KEY := "RCtrl"                     ; hold-to-talk key (RCtrl, not RAlt: RAlt = AltGr on intl layouts)
-BASE     := EnvGet("USERPROFILE") "\.flex-voice"
+BASE     := EnvGet("USERPROFILE") "\.mictext"
 MODEL    := BASE "\models\ggml-base.en.bin"
 WHISPER  := BASE "\bin\whisper-cli.exe"
 MIC_FILE := BASE "\mic.txt"             ; dshow device name, written by install.ps1
 MIN_MS   := 300                         ; holds shorter than this are cancels
 ; -----------------------------------------------------------------------------
 
-RAW := A_Temp "\flex-voice.pcm"
-WAV := A_Temp "\flex-voice.wav"
-OUT := A_Temp "\flex-voice-out.txt"
+RAW := A_Temp "\mictext.pcm"
+WAV := A_Temp "\mictext.wav"
+OUT := A_Temp "\mictext-out.txt"
 
-A_IconTip := "flex-voice (hold " HOLD_KEY " to dictate)"
+A_IconTip := "MicText (hold " HOLD_KEY " to dictate)"
 recPid := 0
 downAt := 0
 
@@ -30,13 +30,13 @@ StartRecording() {
     mic := ""
     try mic := Trim(FileRead(MIC_FILE), " `t`r`n")
     if (mic = "") {
-        TrayTip("No mic configured - run install.ps1", "flex-voice")
+        TrayTip("No mic configured - run install.ps1", "MicText")
         return
     }
     downAt := A_TickCount
     try FileDelete(RAW)
     Run('ffmpeg -y -f dshow -i audio="' mic '" -ar 16000 -ac 1 -f s16le "' RAW '"', , "Hide", &recPid)
-    ToolTip("🔴 flex-voice recording")
+    ToolTip("🔴 MicText recording")
 }
 
 StopRecording() {
@@ -59,7 +59,7 @@ Transcribe() {
     ; wrap raw pcm into a wav whisper-cli can read
     if RunWait('ffmpeg -y -f s16le -ar 16000 -ac 1 -i "' RAW '" "' WAV '"', , "Hide") != 0 {
         Cleanup()
-        TrayTip("transcription failed", "flex-voice")
+        TrayTip("transcription failed", "MicText")
         return
     }
     code := RunWait(A_ComSpec ' /c ""' WHISPER '" -m "' MODEL '" -f "' WAV '" -nt -np > "' OUT '""', , "Hide")
@@ -68,7 +68,7 @@ Transcribe() {
         try text := Trim(FileRead(OUT, "UTF-8"), " `t`r`n")
     Cleanup()
     if (code != 0) {
-        TrayTip("transcription failed", "flex-voice")
+        TrayTip("transcription failed", "MicText")
         return
     }
     if (text != "")

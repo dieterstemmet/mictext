@@ -27,7 +27,7 @@ function fakeMedia() {
   })
 }
 
-describe('<flex-voice-mic>', () => {
+describe('<mictext-mic>', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
     transcriber.mode = 'device'
@@ -36,7 +36,7 @@ describe('<flex-voice-mic>', () => {
   })
 
   it('hold -> release emits a transcript event', async () => {
-    const el = document.createElement('flex-voice-mic')
+    const el = document.createElement('mictext-mic')
     document.body.appendChild(el)
     const got = new Promise((res) => el.addEventListener('transcript', (e) => res(e.detail.text)))
     el.dispatchEvent(new Event('pointerdown'))
@@ -46,7 +46,7 @@ describe('<flex-voice-mic>', () => {
   })
 
   it('short tap (<300ms) cancels without transcribing', async () => {
-    const el = document.createElement('flex-voice-mic')
+    const el = document.createElement('mictext-mic')
     document.body.appendChild(el)
     el.dispatchEvent(new Event('pointerdown'))
     el.dispatchEvent(new Event('pointerup'))
@@ -56,14 +56,14 @@ describe('<flex-voice-mic>', () => {
 
   it('hides itself when transcriber mode is unsupported', async () => {
     transcriber.mode = 'unsupported'
-    const el = document.createElement('flex-voice-mic')
+    const el = document.createElement('mictext-mic')
     document.body.appendChild(el)
     await new Promise((r) => setTimeout(r, 10))
     expect(el.hidden).toBe(true)
   })
 
   it('stops mic tracks on release', async () => {
-    const el = document.createElement('flex-voice-mic')
+    const el = document.createElement('mictext-mic')
     document.body.appendChild(el)
     el.dispatchEvent(new Event('pointerdown'))
     await new Promise((r) => setTimeout(r, 10))
@@ -73,7 +73,7 @@ describe('<flex-voice-mic>', () => {
   })
 
   it('stops mic tracks when disconnected mid-recording', async () => {
-    const el = document.createElement('flex-voice-mic')
+    const el = document.createElement('mictext-mic')
     document.body.appendChild(el)
     el.dispatchEvent(new Event('pointerdown'))
     await new Promise((r) => setTimeout(r, 10))

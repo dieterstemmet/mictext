@@ -1,4 +1,4 @@
-# Deploying the flex-voice server fallback (stt.flexsolutions.ph)
+# Deploying the MicText server fallback (stt.flexsolutions.ph)
 
 The dev box can't do these steps (restricted prod gate, no aws CLI, repo-creation
 needs your say-so). Everything below is one-time, in order.
@@ -6,8 +6,8 @@ needs your say-so). Everything below is one-time, in order.
 ## 1. GitHub repo
 
 ```bash
-cd ~/Personal/flex-voice
-gh repo create dieterstemmet/flex-voice --private --source . --push
+cd ~/Personal/mictext
+gh repo create dieterstemmet/mictext --private --source . --push
 ```
 
 ## 2. DNS
@@ -18,8 +18,8 @@ A record `stt.flexsolutions.ph → 5.223.51.1`.
 ## 3. On the server (root@5.223.51.1)
 
 ```bash
-git clone git@github.com:dieterstemmet/flex-voice.git /root/projects/flex-voice
-cd /root/projects/flex-voice/server
+git clone git@github.com:dieterstemmet/mictext.git /root/projects/mictext
+cd /root/projects/mictext/server
 
 # Secrets — one key per consuming app, comma-separated:
 #   openssl rand -hex 24   (once per key: agent-platform, mac-client, ...)
@@ -68,4 +68,4 @@ low-privilege, revocable, STT-only key.
 
 - No DB, no state: nothing to add to backup crons. The model volume re-downloads itself.
 - Serial transcription by design (semaphore 1) — two concurrent jobs would OOM the box.
-- Consider adding `flex-voice` to the ops-gate deploy list for future `ssh prod-ops deploy flex-voice`.
+- Consider adding `mictext` to the ops-gate deploy list for future `ssh prod-ops deploy mictext`.

@@ -1,12 +1,12 @@
-# flex-voice: On-Device Push-to-Talk for macOS
+# MicText: On-Device Push-to-Talk for macOS
 
 Hold right-⌥ (right Option key) anywhere, speak, then release — your words appear typed at the cursor. Fully on-device: ffmpeg records, whisper.cpp transcribes, nothing leaves your Mac.
 
 ## Installation
 
-1. Clone or navigate to the flex-voice repo:
+1. Clone or navigate to the MicText repo:
    ```bash
-   cd ~/Personal/flex-voice
+   cd ~/Personal/mictext
    ```
 
 2. Run the installer:
@@ -17,7 +17,7 @@ Hold right-⌥ (right Option key) anywhere, speak, then release — your words a
    - Install Hammerspoon (macOS automation framework) via Homebrew
    - Install ffmpeg (audio recording) and whisper-cpp (speech-to-text)
    - Download the base English whisper model (~141 MB)
-   - Copy the flex-voice module into Hammerspoon's config
+   - Copy the MicText module into Hammerspoon's config
    - Update your Hammerspoon init script to load it
 
 3. Open Hammerspoon (or reload if it's already running)
@@ -56,7 +56,7 @@ These tests confirm the setup works end-to-end. Perform them on a Mac with the H
 - [ ] **Test 2: Web form at ai.flexsolutions.ph**
   - Open a browser and navigate to ai.flexsolutions.ph
   - Click into a text input field
-  - Hold right-⌥, say "hello from flexvoice", release
+  - Hold right-⌥, say "hello from MicText", release
   - Text appears in the input field
 
 - [ ] **Test 3: Quick tap rejection**
@@ -71,9 +71,9 @@ These tests confirm the setup works end-to-end. Perform them on a Mac with the H
   - Turn Wi-Fi back on when done
 
 - [ ] **Test 5: Error handling**
-  - Rename or delete `~/.flex-voice/models/ggml-base.en.bin`
+  - Rename or delete `~/.mictext/models/ggml-base.en.bin`
   - Try to dictate by holding right-⌥ and speaking
-  - An alert appears: "flex-voice: transcription failed"
+  - An alert appears: "MicText: transcription failed"
   - Nothing is typed
   - (You can restore the model by running `mac/install.sh` again)
 
@@ -83,7 +83,7 @@ These tests confirm the setup works end-to-end. Perform them on a Mac with the H
 - **Accessibility prompt keeps appearing**: Make sure Hammerspoon is listed in System Settings > Privacy & Security > Accessibility.
 - **Microphone access denied**: Check System Settings > Privacy & Security > Microphone; add the app running ffmpeg (usually Terminal or your shell).
 - **Model download failed**: Ensure you have internet, then run `mac/install.sh` again. The HuggingFace URL redirects; curl should handle it with `-L`.
-- **Transcription says "failed"**: Ensure ffmpeg recorded audio (check `/tmp/flex-voice.wav` exists during recording). Check model file at `~/.flex-voice/models/ggml-base.en.bin`.
+- **Transcription says "failed"**: Ensure ffmpeg recorded audio (check `/tmp/mictext.wav` exists during recording). Check model file at `~/.mictext/models/ggml-base.en.bin`.
 
 ## Known Limitations
 

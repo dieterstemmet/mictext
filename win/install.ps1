@@ -1,10 +1,10 @@
 #Requires -Version 5.1
-# flex-voice Windows installer: AutoHotkey v2 + ffmpeg + whisper.cpp + model.
+# MicText Windows installer: AutoHotkey v2 + ffmpeg + whisper.cpp + model.
 # Idempotent - safe to re-run.
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false  # PS 7.3+: winget/ffmpeg exit non-zero by design; don't trap native exit codes
 
-$base = "$env:USERPROFILE\.flex-voice"
+$base = "$env:USERPROFILE\.mictext"
 New-Item -ItemType Directory -Force -Path "$base\models", "$base\bin" | Out-Null
 
 # --- AutoHotkey v2 + ffmpeg via winget -----------------------------------
@@ -51,11 +51,11 @@ if ($mic) {
 }
 
 # --- install script + run at startup --------------------------------------
-Copy-Item "$PSScriptRoot\flex-voice.ahk" "$base\flex-voice.ahk" -Force
+Copy-Item "$PSScriptRoot\mictext.ahk" "$base\mictext.ahk" -Force
 $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut(
-    "$([Environment]::GetFolderPath('Startup'))\flex-voice.lnk")
-$lnk.TargetPath = "$base\flex-voice.ahk"
+    "$([Environment]::GetFolderPath('Startup'))\mictext.lnk")
+$lnk.TargetPath = "$base\mictext.ahk"
 $lnk.Save()
 
-Write-Host "Done. Double-click $base\flex-voice.ahk to start now (auto-starts at next login)."
+Write-Host "Done. Double-click $base\mictext.ahk to start now (auto-starts at next login)."
 Write-Host "Windows will prompt for microphone access on first recording - allow it."

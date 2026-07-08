@@ -1,15 +1,15 @@
-# flex-voice
+# MicText
 
 On-device speech-to-text. Your audio never leaves your machine.
 
-flex-voice is an embeddable STT library for the web plus reference
+MicText is an embeddable STT library for the web plus reference
 push-to-talk dictation clients for macOS and Windows, all running
 [Whisper](https://github.com/ggml-org/whisper.cpp) locally. An optional
 self-hosted fallback server covers devices too slow to run the model.
 
 | Component | What it is |
 | --- | --- |
-| [`web/`](web/) | Browser library: Whisper in a Web Worker (WebGPU → WASM). Headless `createTranscriber()` core + `<flex-voice-mic>` element. `npm i flex-voice` |
+| [`web/`](web/) | Browser library: Whisper in a Web Worker (WebGPU → WASM). Headless `createTranscriber()` core + `<mictext-mic>` element. `npm i mictext` |
 | [`mac/`](mac/) | macOS dictation client: hold right-⌥, speak, release — text typed at the cursor (Hammerspoon + ffmpeg + whisper.cpp) |
 | [`win/`](win/) | Windows dictation client: hold Right Ctrl (AutoHotkey v2 + ffmpeg + whisper.cpp) |
 | [`server/`](server/) | Optional self-hosted fallback (FastAPI + faster-whisper) for the web library's explicit `slowDevice: 'server'` opt-in |
@@ -25,10 +25,10 @@ configure — typically your own `server/` deployment.
 
 ## Quick start
 
-**Browser** — `npm i flex-voice`, then:
+**Browser** — `npm i mictext`, then:
 
 ```js
-import { createTranscriber } from 'flex-voice'
+import { createTranscriber } from 'mictext'
 const t = createTranscriber()
 const { text } = await t.transcribeBlob(audioBlob)
 ```

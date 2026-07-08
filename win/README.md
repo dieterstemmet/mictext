@@ -1,10 +1,10 @@
-# flex-voice: On-Device Push-to-Talk for Windows
+# MicText: On-Device Push-to-Talk for Windows
 
 Hold Right Ctrl anywhere, speak, then release — your words appear typed at the cursor. Fully on-device: ffmpeg records, whisper.cpp transcribes, nothing leaves your PC.
 
 ## Installation
 
-1. Clone or navigate to the flex-voice repo, then from its root run the installer:
+1. Clone or navigate to the MicText repo, then from its root run the installer:
    ```powershell
    powershell -ExecutionPolicy Bypass -File win\install.ps1
    ```
@@ -13,9 +13,9 @@ Hold Right Ctrl anywhere, speak, then release — your words appear typed at the
    - Download whisper.cpp release binaries (`whisper-cli.exe` and its DLLs)
    - Download the base English whisper model (~141 MB)
    - Auto-detect your microphone and write it to `mic.txt`
-   - Create a shortcut in the Startup folder so flex-voice runs at login
+   - Create a shortcut in the Startup folder so MicText runs at login
 
-2. Double-click `%USERPROFILE%\.flex-voice\flex-voice.ahk` to start it now (it also auto-starts at your next login via the Startup shortcut)
+2. Double-click `%USERPROFILE%\.mictext\mictext.ahk` to start it now (it also auto-starts at your next login via the Startup shortcut)
 
 ## First-Run Permissions
 
@@ -28,7 +28,7 @@ Unlike macOS, no accessibility permission is needed — AutoHotkey can send keys
 ## Hotkey
 
 **Hold Right Ctrl** anywhere on your PC:
-- A small "🔴 flex-voice recording" tooltip appears at the cursor
+- A small "🔴 MicText recording" tooltip appears at the cursor
 - Speak clearly into your microphone
 - Release Right Ctrl
 - Your speech is transcribed on-device and typed into the focused app
@@ -53,7 +53,7 @@ These tests confirm the setup works end-to-end. Perform them on a Windows 10/11 
 - [ ] **Test 3: Web form at ai.flexsolutions.ph**
   - Open a browser and navigate to ai.flexsolutions.ph
   - Click into a text input field
-  - Hold Right Ctrl, say "hello from flexvoice", release
+  - Hold Right Ctrl, say "hello from MicText", release
   - Text appears in the input field
 
 - [ ] **Test 4: Quick tap rejection**
@@ -68,16 +68,16 @@ These tests confirm the setup works end-to-end. Perform them on a Windows 10/11 
   - Turn Wi-Fi back on when done
 
 - [ ] **Test 6: Error handling**
-  - Rename or delete `%USERPROFILE%\.flex-voice\models\ggml-base.en.bin`
+  - Rename or delete `%USERPROFILE%\.mictext\models\ggml-base.en.bin`
   - Try to dictate by holding Right Ctrl and speaking
-  - A Windows notification appears, titled **flex-voice** with the message **transcription failed**
+  - A Windows notification appears, titled **MicText** with the message **transcription failed**
   - Nothing is typed
   - (Restore the model by running `win\install.ps1` again)
 
 ## Troubleshooting
 
-- **No tooltip / hotkey does nothing**: the script isn't running — check the system tray for the AutoHotkey icon (double-click `%USERPROFILE%\.flex-voice\flex-voice.ahk` to start it)
-- **Wrong or no microphone**: edit `%USERPROFILE%\.flex-voice\mic.txt`; list available devices with `ffmpeg -list_devices true -f dshow -i dummy`
+- **No tooltip / hotkey does nothing**: the script isn't running — check the system tray for the AutoHotkey icon (double-click `%USERPROFILE%\.mictext\mictext.ahk` to start it)
+- **Wrong or no microphone**: edit `%USERPROFILE%\.mictext\mic.txt`; list available devices with `ffmpeg -list_devices true -f dshow -i dummy`
 - **"No mic configured" tray notification**: `mic.txt` is empty or missing — set it as above, or re-run `install.ps1` to auto-detect
 - **Model download failed**: re-run `win\install.ps1`
 - **Ran the installer non-elevated**: that's fine — AutoHotkey may install per-user instead of machine-wide; the installer checks both locations
@@ -86,7 +86,7 @@ These tests confirm the setup works end-to-end. Perform them on a Windows 10/11 
 
 - **Right Ctrl passes through**: since the hotkey is pass-through, apps with their own Ctrl-hold behaviors may see brief side effects while a recording is active.
 - **Cancel window under load**: the <300ms cancel window is measured at the moment the release event's callback runs, not at physical key-up. Under heavy system load, a genuine quick tap could occasionally be misjudged as a real recording (or vice versa).
-- **Tooltip indicator, not a tray icon**: recording is shown by a "🔴 flex-voice recording" tooltip near the cursor rather than a tray-icon swap (unlike the mac client's menubar icon).
+- **Tooltip indicator, not a tray icon**: recording is shown by a "🔴 MicText recording" tooltip near the cursor rather than a tray-icon swap (unlike the mac client's menubar icon).
 
 ## Architecture
 

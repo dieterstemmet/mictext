@@ -1,7 +1,7 @@
 services:
-  flex-voice:
+  mictext:
     build: .
-    container_name: flex-voice
+    container_name: mictext
     restart: unless-stopped
     environment:
       - WHISPER_MODEL=${WHISPER_MODEL:-small.en}
@@ -12,10 +12,10 @@ services:
     networks: [traefik-public]
     labels:
       - traefik.enable=true
-      - traefik.http.routers.flexvoice.rule=Host(`stt.flexsolutions.ph`)
-      - traefik.http.routers.flexvoice.entrypoints=websecure
-      - traefik.http.routers.flexvoice.tls.certresolver=letsencrypt
-      - traefik.http.services.flexvoice.loadbalancer.server.port=8000
+      - traefik.http.routers.mictext.rule=Host(`stt.flexsolutions.ph`)
+      - traefik.http.routers.mictext.entrypoints=websecure
+      - traefik.http.routers.mictext.tls.certresolver=letsencrypt
+      - traefik.http.services.mictext.loadbalancer.server.port=8000
 volumes:
   whisper-models:
 networks:

@@ -1,4 +1,4 @@
-"""flex-voice server fallback — STT for devices too slow to run Whisper locally.
+"""MicText server fallback — STT for devices too slow to run Whisper locally.
 
 Opt-in only: the browser library POSTs here solely when the host app set
 slowDevice='server'. Audio is transcribed in memory and never persisted.
