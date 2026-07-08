@@ -58,6 +58,9 @@ The element hides itself (`hidden = true`) if the device is degraded to
 
 ## Demo
 
+From a clone of [the repo](https://github.com/dieterstemmet/flex-voice) (the
+demo isn't shipped in the npm package):
+
 ```bash
 cd web && npx vite --port 5199
 ```
