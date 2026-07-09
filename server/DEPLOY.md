@@ -1,8 +1,7 @@
 # Deploying the MicText server fallback
 
 One-time setup for a self-hosted fallback endpoint (the target of the web
-library's explicit `slowDevice: 'server'` opt-in). Example hostname used
-throughout: `stt.flexsolutions.ph` — substitute your own.
+library's explicit `slowDevice: 'server'` opt-in).
 
 ## 1. DNS
 

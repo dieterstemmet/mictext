@@ -120,13 +120,13 @@ describe('slow-device policy', () => {
     const t = createTranscriber({
       createWorker: () => fakeWorker({ elapsedMs: 9999 }),
       slowDevice: 'server',
-      fallbackUrl: 'https://stt.flexsolutions.ph',
+      fallbackUrl: 'https://stt.example.com',
       fallbackApiKey: 'k1',
     })
     const { text } = await t.transcribeBlob(new Blob([new Uint8Array([1])]))
     expect(text).toBe('from server')
     const [url, init] = globalThis.fetch.mock.calls[0]
-    expect(url).toBe('https://stt.flexsolutions.ph/transcribe')
+    expect(url).toBe('https://stt.example.com/transcribe')
     expect(init.headers['X-API-Key']).toBe('k1')
     expect(init.body).toBeInstanceOf(FormData)
   })

@@ -50,8 +50,8 @@ These tests confirm the setup works end-to-end. Perform them on a Windows 10/11 
   - Hold Right Ctrl, say "testing one two three from Dahican", release
   - "testing one two three from Dahican" appears typed in the editor
 
-- [ ] **Test 3: Web form at ai.flexsolutions.ph**
-  - Open a browser and navigate to ai.flexsolutions.ph
+- [ ] **Test 3: Web form in a browser**
+  - Open a browser and navigate to any page with a text input (e.g. a search engine)
   - Click into a text input field
   - Hold Right Ctrl, say "hello from MicText", release
   - Text appears in the input field

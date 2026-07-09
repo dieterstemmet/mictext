@@ -53,8 +53,8 @@ These tests confirm the setup works end-to-end. Perform them on a Mac with the H
   - Hold right-⌥, say "testing one two three from Dahican", release
   - "testing one two three from Dahican" appears typed in the editor
 
-- [ ] **Test 2: Web form at ai.flexsolutions.ph**
-  - Open a browser and navigate to ai.flexsolutions.ph
+- [ ] **Test 2: Web form in a browser**
+  - Open a browser and navigate to any page with a text input (e.g. a search engine)
   - Click into a text input field
   - Hold right-⌥, say "hello from MicText", release
   - Text appears in the input field

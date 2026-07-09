@@ -23,7 +23,7 @@ ALLOWED_ORIGINS = [o for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") i
 fastapi_app = FastAPI()
 _model = None
 # ponytail: semaphore(1) — two concurrent jobs OOM the box (same hard limit
-# as agent-platform's whisper worker). Scale = bigger box, not more slots.
+# as a typical consuming web app's worker). Scale = bigger box, not more slots.
 _lock = asyncio.Semaphore(1)
 
 

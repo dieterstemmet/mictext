@@ -1,5 +1,5 @@
 import os
-os.environ.setdefault("ALLOWED_ORIGINS", "https://ai.flexsolutions.ph")
+os.environ.setdefault("ALLOWED_ORIGINS", "https://app.example.com")
 
 import asyncio
 import io
@@ -88,12 +88,12 @@ def test_content_length_over_cap_rejected_before_body_read():
 
 def test_preflight_allowed_origin_gets_cors_headers():
     r = client.options("/transcribe", headers={
-        "Origin": "https://ai.flexsolutions.ph",
+        "Origin": "https://app.example.com",
         "Access-Control-Request-Method": "POST",
         "Access-Control-Request-Headers": "X-API-Key",
     })
     assert r.status_code == 200
-    assert r.headers["access-control-allow-origin"] == "https://ai.flexsolutions.ph"
+    assert r.headers["access-control-allow-origin"] == "https://app.example.com"
     assert "x-api-key" in r.headers["access-control-allow-headers"].lower()
 
 

@@ -1,6 +1,6 @@
 # MicText
 
-On-device speech-to-text — audio never leaves the machine. Embeddable STT library for the web (`npm i mictext`: Whisper in a Web Worker, WebGPU → WASM) plus reference push-to-talk dictation clients for macOS and Windows running whisper.cpp locally. Integration target: agent-platform (PR #240 was the first integration, via a vendored copy; the npm publish root-causes that). Open-source release (MIT) and the Windows client landed 2026-07-08; "push-to-type" is the planned UX direction, growing toward voice-assistant frontends.
+On-device speech-to-text — audio never leaves the machine. Embeddable STT library for the web (`npm i mictext`: Whisper in a Web Worker, WebGPU → WASM) plus reference push-to-talk dictation clients for macOS and Windows running whisper.cpp locally. Open-source release (MIT) and the Windows client landed 2026-07-08; "push-to-type" is the planned UX direction, growing toward voice-assistant frontends.
 
 **Privacy is the product.** With defaults, no code path here POSTs audio or transcripts anywhere — only GETs model files (verified with full network logging, see `web/README.md`). Any change that sends audio or transcripts off-device is a design violation — flag it. Sole exception: the web library's explicit `slowDevice: 'server'` opt-in to a fallback URL the user configures.
 
@@ -31,7 +31,7 @@ powershell -ExecutionPolicy Bypass -File win\install.ps1  # AutoHotkey v2 + ffmp
 ## Gotchas
 
 - **Dieter also commits from his Mac** — always `git pull` before starting work here, and expect the local branch to sometimes be ahead/behind.
-- **No server deploy pipeline** — this ships as a library + client installs. `server/DEPLOY.md` is a one-time manual runbook (stt.flexsolutions.ph) that Dieter runs; nothing here auto-deploys.
+- **No server deploy pipeline** — this ships as a library + client installs. `server/DEPLOY.md` is a one-time manual runbook; nothing here auto-deploys.
 - `navigator.gpu` presence != working WebGPU: a failed webgpu model load retries once on a fresh worker with wasm before degrading to `unsupported`/`server` (see `web/README.md`).
 - The demo and tests aren't in the npm tarball (`files: ["src", "README.md"]`) — the demo needs a repo clone.
 - No CI — run web + server tests locally before merge.
