@@ -32,6 +32,11 @@ export function createTranscriber(opts = {}) {
         if (data.type === 'error') reject(new Error(data.message))
         else resolve(data)
       }
+      // A worker that CRASHES (mobile OOM, runtime fault) never posts a
+      // message — without these the request promise hangs forever and the
+      // caller spins on "Transcribing…" indefinitely.
+      worker.onerror = (e) => reject(new Error((e && e.message) || 'worker crashed'))
+      worker.onmessageerror = () => reject(new Error('worker message deserialization failed'))
       worker.postMessage(msg, transfer)
     }))
     queue = p.catch(() => {})

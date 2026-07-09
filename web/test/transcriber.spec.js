@@ -153,4 +153,18 @@ describe('slow-device policy', () => {
     const [, init] = globalThis.fetch.mock.calls[0]
     expect(init.headers).not.toHaveProperty('X-API-Key')
   })
+
+  it('a crashed worker rejects the request instead of hanging forever', async () => {
+    // Worker that never posts a message — only fires the error event (OOM/crash).
+    const w = {
+      onmessage: null,
+      onerror: null,
+      postMessage() {
+        queueMicrotask(() => w.onerror && w.onerror(new Error('worker crashed')))
+      },
+      terminate() {},
+    }
+    const t = createTranscriber({ createWorker: () => w })
+    await expect(t.transcribeBlob(new Blob([new Uint8Array([1])]))).rejects.toThrow()
+  })
 })
