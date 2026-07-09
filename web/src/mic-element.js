@@ -2,6 +2,54 @@ import { createTranscriber } from './transcriber.js'
 
 const CANCEL_MS = 300
 
+// Crash probe. WebKit (iPhone AND macOS Safari) can OOM-kill the whole tab
+// mid-inference — nothing catchable fires in JS, the page just reloads with
+// "A problem repeatedly occurred". Detection is only possible after the fact:
+// a marker written before risky work that is still present (and fresh) at the
+// next boot means the last attempt took the page down. That device is then
+// blocked from on-device transcription permanently (MicTextMic.resetProbe()
+// to retry, e.g. after switching to a smaller model).
+//
+// The marker is a timestamp: a STALE marker means the tab was closed mid-work
+// (download on a slow link, user gave up) — that's not a crash, so it's
+// cleared and the device gets another chance.
+const PROBE_KEY = 'mictext-probe'
+const PROBE_FRESH_MS = 120000
+let probeGuards = 0
+
+function probeRead() {
+  try { return localStorage.getItem(PROBE_KEY) } catch { return null }
+}
+function probeWrite(v) {
+  try {
+    if (v === null) localStorage.removeItem(PROBE_KEY)
+    else localStorage.setItem(PROBE_KEY, v)
+  } catch { /* no storage = no probe, attempt anyway */ }
+}
+// load() and transcribeBlob() overlap (transcribe awaits load), so the marker
+// is refcounted: it clears only when the LAST risky span finishes.
+function guardStart() {
+  probeGuards += 1
+  probeWrite(String(Date.now()))
+}
+function guardEnd() {
+  probeGuards = Math.max(0, probeGuards - 1)
+  if (probeGuards === 0) probeWrite(null)
+}
+// Returns true when this device is (now) blocked from on-device attempts.
+function probeBlocked() {
+  const marker = probeRead()
+  if (marker === 'blocked') return true
+  if (marker) {
+    if (Date.now() - (Number(marker) || 0) < PROBE_FRESH_MS) {
+      probeWrite('blocked') // fresh marker at boot = last attempt crashed the tab
+      return true
+    }
+    probeWrite(null) // stale = closed mid-work, not a crash
+  }
+  return false
+}
+
 class MicTextMic extends HTMLElement {
   connectedCallback() {
     this._disconnected = false
@@ -23,9 +71,21 @@ class MicTextMic extends HTMLElement {
       fallbackUrl: this.getAttribute('fallback-url') || undefined,
       fallbackApiKey: this.getAttribute('fallback-api-key') || undefined,
     }
+    // ponytail: a blocked device hides the mic even when a server fallback is
+    // configured; wire blocked→server mode if a real deployment needs it.
+    if (probeBlocked()) {
+      this.hidden = true
+      this._emitError('On-device transcription previously crashed this device — mic disabled')
+      return
+    }
+
     this._t = createTranscriber(opts)
     // Kick off the (cached) model load early, hide if the device can't run it.
-    this._t.load().then(() => { if (this._t.mode === 'unsupported') this.hidden = true })
+    // The load includes a benchmark inference — crash-guard the whole span.
+    guardStart()
+    this._t.load()
+      .then(() => { if (this._t.mode === 'unsupported') this.hidden = true })
+      .finally(guardEnd)
 
     this.addEventListener('pointerdown', () => this._start())
     this.addEventListener('pointerup', () => this._stop())
@@ -89,13 +149,21 @@ class MicTextMic extends HTMLElement {
     if (Date.now() - session.downAt < CANCEL_MS) return // cancel tap
     try {
       this._btn.disabled = true
+      guardStart() // inference is the crash-prone span on WebKit
       const { text } = await this._t.transcribeBlob(new Blob(session.chunks, { type: 'audio/webm' }))
       if (text) this.dispatchEvent(new CustomEvent('transcript', { detail: { text }, bubbles: true }))
     } catch (e) {
       this._emitError(e.message)
     } finally {
+      guardEnd() // a JS error is NOT a crash — only an unreachable finally is
       this._btn.disabled = false
     }
+  }
+
+  // Clear the crash block (e.g. to retry after switching to a smaller model).
+  static resetProbe() {
+    probeGuards = 0
+    probeWrite(null)
   }
 
   _emitError(message) {

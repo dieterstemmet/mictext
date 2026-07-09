@@ -6,7 +6,7 @@
 
 On-device speech-to-text for the browser: audio never leaves the machine
 unless you explicitly opt into a server fallback for slow devices. Runs
-Whisper (`onnx-community/whisper-base.en`, quantized) via
+Whisper (`onnx-community/whisper-tiny.en` by default, quantized) via
 `@huggingface/transformers`, in a Web Worker, over WebGPU or WASM.
 
 ## Layer 1: headless core (`createTranscriber`)
@@ -15,7 +15,7 @@ Whisper (`onnx-community/whisper-base.en`, quantized) via
 import { createTranscriber } from 'mictext'
 
 const t = createTranscriber({
-  model = 'onnx-community/whisper-base.en',
+  model = 'onnx-community/whisper-tiny.en',   // base.en fits desktop Chrome; exceeds WebKit's tab memory
   modelBaseUrl = null,          // self-hosted model files (sets localModelPath)
   onProgress = null,            // (fractionOrFileProgress) => void during model download
   slowDevice = 'disable',       // 'disable' | 'server'
@@ -90,7 +90,7 @@ for how a broken-but-present WebGPU is handled.
 
 ## Model download
 
-The Whisper model (`onnx-community/whisper-base.en`, `dtype: 'q8'`) is
+The Whisper model (`onnx-community/whisper-tiny.en` by default, `dtype: 'q8'`) is
 fetched from huggingface.co on first use and cached by the browser (Cache
 Storage API), not re-downloaded on subsequent page loads on the same
 device/browser profile. Pass `onProgress` (headless) — or watch network

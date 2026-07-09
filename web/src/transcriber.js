@@ -4,7 +4,10 @@ const BENCH_SECONDS = 1
 
 export function createTranscriber(opts = {}) {
   const {
-    model = 'onnx-community/whisper-base.en',
+    // tiny.en by default: whisper-base's inference footprint exceeds WebKit's
+    // per-tab memory ceiling (iPhone AND macOS Safari OOM-kill the page).
+    // Pass model: 'onnx-community/whisper-base.en' where you know the device.
+    model = 'onnx-community/whisper-tiny.en',
     modelBaseUrl = null,
     onProgress = null,
     slowDevice = 'disable',
