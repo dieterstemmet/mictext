@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/dieterstemmet/mictext/master/assets/logo-badge.svg" width="140" alt="MicText: a microphone whose grille is lines of text, ending in a red caret">
+</p>
+
 # MicText (web)
 
 On-device speech-to-text for the browser: audio never leaves the machine

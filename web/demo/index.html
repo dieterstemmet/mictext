@@ -7,7 +7,7 @@
   addEventListener('transcript', (e) => { out().value += (out().value ? ' ' : '') + e.detail.text })
   addEventListener('voice-error', (e) => alert(e.detail.message))
 </script>
-<h1>MicText</h1>
+<img src="logo.svg" width="72" alt="MicText"><h1>MicText</h1>
 <p>Hold the mic, speak, release. Audio never leaves this device.</p>
 <mictext-mic></mictext-mic>
 <textarea id="out" rows="6" cols="60"></textarea>
