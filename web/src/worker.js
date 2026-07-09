@@ -17,7 +17,13 @@ self.onmessage = async ({ data }) => {
       self.postMessage({ type: 'ready' })
     } else if (data.type === 'transcribe') {
       const t0 = performance.now()
-      const out = await asr(data.audio)
+      // Without chunk_length_s Whisper's feature extractor silently TRUNCATES
+      // input to the first 30 s — long dictations lost everything after the
+      // first sentence. Chunk long clips; leave short ones on the fast path.
+      const opts = data.audio.length > 30 * 16000
+        ? { chunk_length_s: 30, stride_length_s: 5 }
+        : {}
+      const out = await asr(data.audio, opts)
       self.postMessage({
         type: 'result',
         text: (out.text || '').trim(),
