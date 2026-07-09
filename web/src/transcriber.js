@@ -34,9 +34,11 @@ export function createTranscriber(opts = {}) {
       }
       // A worker that CRASHES (mobile OOM, runtime fault) never posts a
       // message — without these the request promise hangs forever and the
-      // caller spins on "Transcribing…" indefinitely.
-      worker.onerror = (e) => reject(new Error((e && e.message) || 'worker crashed'))
-      worker.onmessageerror = () => reject(new Error('worker message deserialization failed'))
+      // caller spins on "Transcribing…" indefinitely. The crashed worker is
+      // torn down so the NEXT attempt starts from a clean load instead of
+      // posting into a corpse.
+      worker.onerror = (e) => { _faultReset(); reject(new Error((e && e.message) || 'worker crashed')) }
+      worker.onmessageerror = () => { _faultReset(); reject(new Error('worker message deserialization failed')) }
       worker.postMessage(msg, transfer)
     }))
     queue = p.catch(() => {})
@@ -114,9 +116,17 @@ export function createTranscriber(opts = {}) {
     }
   }
 
-  t.dispose = function dispose() {
+  // Tear down worker state so the next load()/request() starts clean. Resetting
+  // `queue` is essential: a wedged in-flight request would otherwise chain every
+  // future request onto a promise that never settles (permanent on-device hang).
+  function _faultReset() {
     if (worker) { worker.terminate(); worker = null }
     loadPromise = null
+    queue = Promise.resolve()
+  }
+
+  t.dispose = function dispose() {
+    _faultReset()
   }
 
   return t

@@ -167,4 +167,34 @@ describe('slow-device policy', () => {
     const t = createTranscriber({ createWorker: () => w })
     await expect(t.transcribeBlob(new Blob([new Uint8Array([1])]))).rejects.toThrow()
   })
+
+  it('dispose() unwedges the queue: next transcribe runs on a fresh worker', async () => {
+    // First worker answers load + the benchmark, then wedges on the real
+    // transcribe. dispose() must reset the queue so worker #2 can serve.
+    const mkWedged = () => {
+      let transcribes = 0
+      const w = {
+        onmessage: null,
+        onerror: null,
+        postMessage(msg) {
+          queueMicrotask(() => {
+            if (msg.type === 'load') w.onmessage({ data: { type: 'ready' } })
+            else if (++transcribes === 1) w.onmessage({ data: { type: 'result', text: 'bench', elapsedMs: 100 } })
+            // 2nd transcribe: no reply, ever (wedged worker)
+          })
+        },
+        terminate() {},
+      }
+      return w
+    }
+    let made = 0
+    const t = createTranscriber({ createWorker: () => { made += 1; return made === 1 ? mkWedged() : fakeWorker() } })
+    const hung = t.transcribeBlob(new Blob([new Uint8Array([1])]))
+    await new Promise((r) => setTimeout(r, 10)) // let the wedged transcribe get posted
+    t.dispose()
+    const { text } = await t.transcribeBlob(new Blob([new Uint8Array([1])]))
+    expect(text).toBe('hello dahican')
+    expect(made).toBe(2)
+    hung.catch(() => {}) // wedged promise never settles; silence any late rejection
+  })
 })
