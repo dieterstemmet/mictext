@@ -39,11 +39,11 @@ ShowMeter() {
         loop 14 {
             meterLevels.Push(0)
             meterBars.Push(meterGui.AddProgress(
-                "x" (10 + (A_Index - 1) * 11) " y6 w4 h24 Vertical cD44950 Background303030 Range0-100", 2))
+                "x" (12 + (A_Index - 1) * 13) " y6 w6 h28 Vertical cFFFFFF Background1E1E1E Range0-100", 14))
         }
-        w := 20 + 14 * 11
+        w := 18 + 14 * 13
         ; bottom-center, clearing the taskbar — matches the web mic's sheet
-        meterGui.Show("x" ((A_ScreenWidth - w) // 2) " y" (A_ScreenHeight - 36 - 90) " w" w " h36 NoActivate")
+        meterGui.Show("x" ((A_ScreenWidth - w) // 2) " y" (A_ScreenHeight - 40 - 90) " w" w " h40 NoActivate")
         SetTimer(UpdateMeter, 100)
     }
 }
@@ -62,9 +62,9 @@ UpdateMeter() {
             idx--
         }
     }
-    lv := 2 ; floor so idle bars stay visible
+    lv := 14 ; floor ≈ small pill so silence never reads as dots
     if IsNumber(db)
-        lv := Max(2, Min(100, Round((db + 50) * 2))) ; -50 dB floor -> 0-100
+        lv := Max(14, Min(100, Round((db + 50) * 2))) ; -50 dB floor -> 0-100
     meterLevels.RemoveAt(1)
     meterLevels.Push(lv)
     for i, bar in meterBars

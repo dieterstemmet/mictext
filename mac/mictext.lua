@@ -32,25 +32,27 @@ local hud, levels = nil, {}
 local function drawBars()
   if not hud then return end
   for i = 1, BARS do
-    local bh = 2 + (levels[i] or 0) * 22
+    -- Thick white rounded pills on dark, min 4px so silence reads as small
+    -- pills, not dots (reference look, same as the web sheet).
+    local bh = 4 + (levels[i] or 0) * 24
     hud[i + 1] = {
       type = "rectangle", action = "fill",
-      fillColor = { red = 0.90, green = 0.28, blue = 0.30, alpha = 1 },
-      frame = { x = 10 + (i - 1) * 11, y = (36 - bh) / 2, w = 4, h = bh },
-      roundedRectRadii = { xRadius = 2, yRadius = 2 },
+      fillColor = { red = 1, green = 1, blue = 1, alpha = 1 },
+      frame = { x = 12 + (i - 1) * 13, y = (40 - bh) / 2, w = 6, h = bh },
+      roundedRectRadii = { xRadius = 3, yRadius = 3 },
     }
   end
 end
 
 local function showHud()
   local f = hs.screen.mainScreen():frame()
-  local w = 20 + BARS * 11
+  local w = 18 + BARS * 13
   -- Bottom-center, floating above the Dock area — matches the web mic's sheet.
-  hud = hs.canvas.new({ x = f.x + (f.w - w) / 2, y = f.y + f.h - 36 - 24, w = w, h = 36 })
+  hud = hs.canvas.new({ x = f.x + (f.w - w) / 2, y = f.y + f.h - 40 - 24, w = w, h = 40 })
   hud[1] = {
     type = "rectangle", action = "fill",
-    fillColor = { red = 0.10, green = 0.10, blue = 0.10, alpha = 0.85 },
-    roundedRectRadii = { xRadius = 9, yRadius = 9 },
+    fillColor = { red = 0.05, green = 0.05, blue = 0.05, alpha = 0.92 },
+    roundedRectRadii = { xRadius = 12, yRadius = 12 },
   }
   levels = {}
   for i = 1, BARS do levels[i] = 0 end
