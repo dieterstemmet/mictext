@@ -15,10 +15,70 @@ MIN_MS   := 300                         ; holds shorter than this are cancels
 RAW := A_Temp "\mictext.pcm"
 WAV := A_Temp "\mictext.wav"
 OUT := A_Temp "\mictext-out.txt"
+RMS := A_Temp "\mictext-rms.txt"
 
 A_IconTip := "MicText (hold " HOLD_KEY " to dictate)"
 recPid := 0
 downAt := 0
+
+; -- live waveform meter ------------------------------------------------------
+; The recording ffmpeg also runs the pass-through astats filter, appending RMS
+; lines to RMS (audio unchanged). A 100ms timer tails that file and drives 14
+; rolling vertical bars in a small always-on-top strip — same look as the web
+; mic. Purely cosmetic: any failure here must never break the recording.
+meterGui := 0
+meterBars := []
+meterLevels := []
+
+ShowMeter() {
+    global meterGui, meterBars, meterLevels
+    try {
+        meterGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x08000000") ; WS_EX_NOACTIVATE: never steal focus
+        meterGui.BackColor := "1E1E1E"
+        meterBars := [], meterLevels := []
+        loop 14 {
+            meterLevels.Push(0)
+            meterBars.Push(meterGui.AddProgress(
+                "x" (10 + (A_Index - 1) * 11) " y6 w4 h24 Vertical cD44950 Background303030 Range0-100", 2))
+        }
+        w := 20 + 14 * 11
+        meterGui.Show("x" ((A_ScreenWidth - w) // 2) " y40 w" w " h36 NoActivate")
+        SetTimer(UpdateMeter, 100)
+    }
+}
+
+UpdateMeter() {
+    global meterBars, meterLevels
+    db := ""
+    try {
+        lines := StrSplit(FileRead(RMS), "`n", "`r")
+        idx := lines.Length
+        while idx >= 1 {
+            if (p := InStr(lines[idx], "RMS_level=")) {
+                db := Trim(SubStr(lines[idx], p + 10))
+                break
+            }
+            idx--
+        }
+    }
+    lv := 2 ; floor so idle bars stay visible
+    if IsNumber(db)
+        lv := Max(2, Min(100, Round((db + 50) * 2))) ; -50 dB floor -> 0-100
+    meterLevels.RemoveAt(1)
+    meterLevels.Push(lv)
+    for i, bar in meterBars
+        bar.Value := meterLevels[i]
+}
+
+HideMeter() {
+    global meterGui
+    SetTimer(UpdateMeter, 0)
+    if meterGui {
+        try meterGui.Destroy()
+        meterGui := 0
+    }
+    try FileDelete(RMS)
+}
 
 ; ponytail: record headerless raw PCM so a hard ProcessClose can't corrupt the
 ; file (wav headers are finalized on close); a second instant ffmpeg pass wraps
@@ -35,8 +95,12 @@ StartRecording() {
     }
     downAt := A_TickCount
     try FileDelete(RAW)
-    Run('ffmpeg -y -f dshow -i audio="' mic '" -ar 16000 -ac 1 -f s16le "' RAW '"', , "Hide", &recPid)
-    ToolTip("🔴 MicText recording")
+    try FileDelete(RMS)
+    ; filtergraph paths need ':' and '\' escaped (filter option syntax)
+    rmsEsc := StrReplace(StrReplace(RMS, "\", "/"), ":", "\:")
+    af := "astats=metadata=1:reset=0.15,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:direct=1:file=" rmsEsc
+    Run('ffmpeg -y -f dshow -i audio="' mic '" -ar 16000 -ac 1 -af "' af '" -f s16le "' RAW '"', , "Hide", &recPid)
+    ShowMeter()
 }
 
 StopRecording() {
@@ -47,7 +111,7 @@ StopRecording() {
     recPid := 0
     cancelled := (A_TickCount - downAt) < MIN_MS
     ProcessClose(pid)
-    ToolTip()
+    HideMeter()
     if cancelled {
         try FileDelete(RAW)
         return
