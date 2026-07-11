@@ -34,16 +34,16 @@ ShowMeter() {
     global meterGui, meterBars, meterLevels
     try {
         meterGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x08000000") ; WS_EX_NOACTIVATE: never steal focus
-        meterGui.BackColor := "1E1E1E"
+        meterGui.BackColor := "0A0A0A"
         meterBars := [], meterLevels := []
         loop 14 {
             meterLevels.Push(0)
             meterBars.Push(meterGui.AddProgress(
-                "x" (12 + (A_Index - 1) * 13) " y6 w6 h28 Vertical cFFFFFF Background1E1E1E Range0-100", 14))
+                "x" (12 + (A_Index - 1) * 13) " y5 w3 h22 Vertical cFFFFFF Background0A0A0A Range0-100", 18))
         }
-        w := 18 + 14 * 13
+        w := 21 + 14 * 13
         ; bottom-center, clearing the taskbar — matches the web mic's sheet
-        meterGui.Show("x" ((A_ScreenWidth - w) // 2) " y" (A_ScreenHeight - 40 - 90) " w" w " h40 NoActivate")
+        meterGui.Show("x" ((A_ScreenWidth - w) // 2) " y" (A_ScreenHeight - 32 - 90) " w" w " h32 NoActivate")
         SetTimer(UpdateMeter, 100)
     }
 }
@@ -62,9 +62,9 @@ UpdateMeter() {
             idx--
         }
     }
-    lv := 14 ; floor ≈ small pill so silence never reads as dots
+    lv := 18 ; floor ≈ short dash so silence never reads as dots
     if IsNumber(db)
-        lv := Max(14, Min(100, Round((db + 50) * 2))) ; -50 dB floor -> 0-100
+        lv := Max(18, Min(100, Round((db + 50) * 2))) ; -50 dB floor -> 0-100
     meterLevels.RemoveAt(1)
     meterLevels.Push(lv)
     for i, bar in meterBars
