@@ -23,52 +23,92 @@ downAt := 0
 
 ; -- live waveform meter ------------------------------------------------------
 ; The recording ffmpeg also runs the pass-through astats filter, appending RMS
-; lines to RMS (audio unchanged). A 100ms timer tails that file and drives 14
-; rolling vertical bars in a small always-on-top strip — same look as the web
-; mic. Purely cosmetic: any failure here must never break the recording.
+; lines to RMS (audio unchanged). A 70ms timer tails that file and drives 14
+; rolling vertical bars in a small always-on-top pill — same look and feel as
+; the mac client. Purely cosmetic: failures here must never break recording.
 meterGui := 0
 meterBars := []
 meterLevels := []
+latest := 0.0      ; newest normalized level (the tick samples this)
+env := 0.0         ; attack/release envelope of latest
+recent := []       ; rolling window of raw dB, ~1.3s at ~100 RMS lines/s
+rmsSeen := 0       ; RMS-file lines already consumed
+seen := 0          ; frames seen this recording (for warmup skip)
+hiSeen := ""       ; session memory of the voice's ceiling (across recordings)
 
 ShowMeter() {
-    global meterGui, meterBars, meterLevels
+    global meterGui, meterBars, meterLevels, latest, env, recent, rmsSeen, seen
     try {
+        latest := 0.0, env := 0.0, recent := [], rmsSeen := 0, seen := 0
         meterGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x08000000") ; WS_EX_NOACTIVATE: never steal focus
         meterGui.BackColor := "0A0A0A"
         meterBars := [], meterLevels := []
         loop 14 {
-            meterLevels.Push(0)
+            meterLevels.Push(0.0)
             meterBars.Push(meterGui.AddProgress(
-                "x" (12 + (A_Index - 1) * 13) " y5 w3 h22 Vertical cFFFFFF Background0A0A0A Range0-100", 18))
+                "x" (10 + (A_Index - 1) * 11) " y3 w3 h20 Vertical cFFFFFF Background0A0A0A Range0-100", 10))
         }
-        w := 21 + 14 * 13
-        ; bottom-center, clearing the taskbar — matches the web mic's sheet
-        meterGui.Show("x" ((A_ScreenWidth - w) // 2) " y" (A_ScreenHeight - 32 - 90) " w" w " h32 NoActivate")
-        SetTimer(UpdateMeter, 100)
+        w := 17 + 14 * 11
+        ; bottom-center, clearing the taskbar — matches the mac pill
+        meterGui.Show("x" ((A_ScreenWidth - w) // 2) " y" (A_ScreenHeight - 26 - 90) " w" w " h26 NoActivate")
+        SetTimer(UpdateMeter, 70)
     }
 }
 
+; Adaptive level range: a fixed dB window doesn't transfer across machines
+; (mic gain / input volume shift absolute RMS by 20+ dB). Normalize against
+; the min/max of the last ~1.3s of raw dB: the window min tracks the ambient
+; floor via inter-word dips, the max tracks syllable peaks, outliers
+; self-expire. Young windows assume a full speech range (else every early
+; syllable is its own maximum and pegs the meter), and the voice's real
+; ceiling is remembered across recordings.
+PushLevel(db) {
+    global latest, recent, seen, hiSeen
+    seen++
+    if (!IsNumber(db) || seen <= 30) { ; skip astats' first ~0.3s of ramp junk
+        latest := 0.0
+        return
+    }
+    db := db + 0.0
+    recent.Push(db)
+    if (recent.Length > 130)
+        recent.RemoveAt(1)
+    lo := 999.0, hi := -999.0
+    for v in recent
+        lo := Min(lo, v), hi := Max(hi, v)
+    if (recent.Length = 130)
+        hiSeen := Max(hi, ((hiSeen = "") ? hi : hiSeen) - 0.002)
+    hi := Max(hi, (hiSeen = "") ? lo + 40 : hiSeen)
+    ; 6dB gate above the floor keeps ambient wiggle flat; 12dB min span stops
+    ; quiet rooms amplifying noise; ^0.8 lift keeps waves big without pegging.
+    latest := Max(0, Min(1, (db - lo - 6) / Max(hi - lo - 6, 12))) ** 0.8
+}
+
 UpdateMeter() {
-    global meterBars, meterLevels
-    db := ""
+    global meterBars, meterLevels, latest, env, rmsSeen
+    ; consume every new RMS line (not just the last: the adaptive window
+    ; needs each frame), then advance the display on this fixed clock
     try {
         lines := StrSplit(FileRead(RMS), "`n", "`r")
-        idx := lines.Length
-        while idx >= 1 {
-            if (p := InStr(lines[idx], "RMS_level=")) {
-                db := Trim(SubStr(lines[idx], p + 10))
-                break
-            }
-            idx--
+        while (rmsSeen < lines.Length) {
+            rmsSeen++
+            if (p := InStr(lines[rmsSeen], "RMS_level="))
+                PushLevel(Trim(SubStr(lines[rmsSeen], p + 10)))
         }
     }
-    lv := 18 ; floor ≈ short dash so silence never reads as dots
-    if IsNumber(db)
-        lv := Max(18, Min(100, Round((db + 45) * 10 / 3))) ; -45..-15 dB -> 0-100
+    ; attack/release envelope: syllables register in ~70ms, silence falls off
+    ; over ~280ms — kills raw RMS jitter without feeling laggy
+    env := env + (latest - env) * (latest > env ? 0.7 : 0.4)
     meterLevels.RemoveAt(1)
-    meterLevels.Push(lv)
-    for i, bar in meterBars
-        bar.Value := meterLevels[i]
+    meterLevels.Push(env)
+    for i, bar in meterBars {
+        ; 1-2-1 blur across neighbors rounds the wave into an organic curve;
+        ; 10% floor so silence reads as a dot line
+        c := meterLevels[i]
+        l := (i > 1) ? meterLevels[i - 1] : c
+        r := (i < meterLevels.Length) ? meterLevels[i + 1] : c
+        bar.Value := Round(10 + ((l + 2 * c + r) / 4) * 90)
+    }
 }
 
 HideMeter() {
