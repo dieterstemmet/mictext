@@ -42,7 +42,8 @@ ShowMeter() {
                 "x" (10 + (A_Index - 1) * 11) " y6 w4 h24 Vertical cD44950 Background303030 Range0-100", 2))
         }
         w := 20 + 14 * 11
-        meterGui.Show("x" ((A_ScreenWidth - w) // 2) " y40 w" w " h36 NoActivate")
+        ; bottom-center, clearing the taskbar — matches the web mic's sheet
+        meterGui.Show("x" ((A_ScreenWidth - w) // 2) " y" (A_ScreenHeight - 36 - 90) " w" w " h36 NoActivate")
         SetTimer(UpdateMeter, 100)
     }
 }

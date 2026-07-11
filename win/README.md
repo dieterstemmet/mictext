@@ -47,7 +47,7 @@ These tests confirm the setup works end-to-end. Perform them on a Windows 10/11 
 
 - [ ] **Test 2: Notepad**
   - Open Notepad or any text app
-  - Hold Right Ctrl, say "testing one two three", release — a small waveform strip appears top-center while recording
+  - Hold Right Ctrl, say "testing one two three", release — a small waveform strip appears bottom-center while recording
   - "testing one two three" appears typed in the editor
 
 - [ ] **Test 3: Web form in a browser**
