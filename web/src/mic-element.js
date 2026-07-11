@@ -102,7 +102,7 @@ class MicTextMic extends HTMLElement {
   }
 
   // Live input waveform: rolling bars driven by mic RMS while recording, so
-  // "listening" is visible at a glance (same pattern as the FlexAI composer).
+  // "listening" is visible at a glance (newest bar on the right, WhatsApp-style).
   _startWave(stream) {
     // Cosmetic — any failure (no AudioContext, autoplay policy) means flat
     // bars, never a broken recording.
