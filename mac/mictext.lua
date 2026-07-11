@@ -66,8 +66,9 @@ local function hideHud()
 end
 
 local function pushLevel(db)
-  -- -50 dB floor -> 0..1; silence prints "-inf" (tonumber = nil).
-  local lv = db and math.max(0, math.min(1, (db + 50) / 50)) or 0
+  -- Per-frame RMS mapped -45dB..-15dB -> 0..1 (measured speech range on a
+  -- laptop mic; full-scale mapping left bars at half height). "-inf" = 0.
+  local lv = db and math.max(0, math.min(1, (db + 45) / 30)) or 0
   table.remove(levels, 1)
   levels[#levels + 1] = lv
   drawBars()
@@ -107,7 +108,7 @@ local function startRecording()
       return true -- keep streaming
     end,
     { "-y", "-f", "avfoundation", "-i", ":" .. MIC, "-ar", "16000", "-ac", "1",
-      "-af", "astats=metadata=1:reset=0.15,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:direct=1:file=-",
+      "-af", "astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:direct=1:file=-",
       WAV })
   recTask:start()
   setIcon(true)

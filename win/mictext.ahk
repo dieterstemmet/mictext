@@ -64,7 +64,7 @@ UpdateMeter() {
     }
     lv := 18 ; floor ≈ short dash so silence never reads as dots
     if IsNumber(db)
-        lv := Max(18, Min(100, Round((db + 50) * 2))) ; -50 dB floor -> 0-100
+        lv := Max(18, Min(100, Round((db + 45) * 10 / 3))) ; -45..-15 dB -> 0-100
     meterLevels.RemoveAt(1)
     meterLevels.Push(lv)
     for i, bar in meterBars
@@ -99,7 +99,7 @@ StartRecording() {
     try FileDelete(RMS)
     ; filtergraph paths need ':' and '\' escaped (filter option syntax)
     rmsEsc := StrReplace(StrReplace(RMS, "\", "/"), ":", "\:")
-    af := "astats=metadata=1:reset=0.15,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:direct=1:file=" rmsEsc
+    af := "astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:direct=1:file=" rmsEsc
     Run('ffmpeg -y -f dshow -i audio="' mic '" -ar 16000 -ac 1 -af "' af '" -f s16le "' RAW '"', , "Hide", &recPid)
     ShowMeter()
 }
