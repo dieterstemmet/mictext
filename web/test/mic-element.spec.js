@@ -18,6 +18,11 @@ function fakeMedia() {
   globalThis.navigator.mediaDevices = {
     getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }),
   }
+  globalThis.AudioContext = vi.fn(function () {
+    this.createAnalyser = () => ({ fftSize: 0, getByteTimeDomainData: vi.fn() })
+    this.createMediaStreamSource = () => ({ connect: vi.fn() })
+    this.close = vi.fn()
+  })
   globalThis.MediaRecorder = vi.fn(function () {
     this.start = vi.fn()
     this.stop = vi.fn(() => {
@@ -81,6 +86,21 @@ describe('<mictext-mic>', () => {
     await new Promise((r) => setTimeout(r, 10))
     el.remove()
     expect(track.stop).toHaveBeenCalled()
+  })
+
+  it('shows the live waveform while recording and hides it after', async () => {
+    const el = document.createElement('mictext-mic')
+    document.body.appendChild(el)
+    const wave = el.shadowRoot.querySelector('.wave')
+    expect(wave.hidden).toBe(true)
+    el.dispatchEvent(new Event('pointerdown'))
+    await new Promise((r) => setTimeout(r, 0)) // getUserMedia resolves
+    expect(wave.hidden).toBe(false)
+    expect(wave.children.length).toBeGreaterThan(0)
+    await new Promise((r) => setTimeout(r, 350))
+    el.dispatchEvent(new Event('pointerup'))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(wave.hidden).toBe(true)
   })
 
   describe('crash probe (WebKit OOM tab-kill detection)', () => {

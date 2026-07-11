@@ -57,13 +57,21 @@ class MicTextMic extends HTMLElement {
 
     this.attachShadow({ mode: 'open' }).innerHTML = `
       <style>
+        :host { display: inline-flex; align-items: center; }
         button { border: none; border-radius: 50%; width: 2.5rem; height: 2.5rem;
                  cursor: pointer; background: #eee; font-size: 1.1rem; }
         button.recording { background: #e33; }
         button:disabled { opacity: .5; cursor: default; }
+        .wave { display: inline-flex; align-items: center; gap: 2px; height: 18px;
+                margin-left: .5rem; }
+        .wave[hidden] { display: none; }
+        .wave i { width: 2px; min-height: 2px; height: 2px; background: #e33;
+                  border-radius: 1px; transition: height 90ms linear; }
       </style>
-      <button type="button" title="Hold to talk">🎤</button>`
+      <button type="button" title="Hold to talk">🎤</button>
+      <span class="wave" hidden aria-hidden="true">${'<i></i>'.repeat(14)}</span>`
     this._btn = this.shadowRoot.querySelector('button')
+    this._waveEl = this.shadowRoot.querySelector('.wave')
 
     const opts = this.transcriberOptions || {
       model: this.getAttribute('model') || undefined,
@@ -93,8 +101,57 @@ class MicTextMic extends HTMLElement {
     this.addEventListener('pointercancel', () => this._stop())
   }
 
+  // Live input waveform: rolling bars driven by mic RMS while recording, so
+  // "listening" is visible at a glance (same pattern as the FlexAI composer).
+  _startWave(stream) {
+    // Cosmetic — any failure (no AudioContext, autoplay policy) means flat
+    // bars, never a broken recording.
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext
+      const ctx = new Ctx()
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 512
+      ctx.createMediaStreamSource(stream).connect(analyser)
+      const buf = new Uint8Array(analyser.fftSize)
+      const bars = [...this._waveEl.children]
+      this._waveEl.hidden = false
+      const wave = { ctx, raf: 0, last: 0 }
+      this._wave = wave
+      const tick = (t) => {
+        analyser.getByteTimeDomainData(buf)
+        let sum = 0
+        for (let i = 0; i < buf.length; i++) {
+          const d = (buf[i] - 128) / 128
+          sum += d * d
+        }
+        // ~3x boost: normal speech RMS is quiet; full bar ≈ loud voice.
+        const level = Math.min(1, Math.sqrt(sum / buf.length) * 3)
+        if (t - wave.last > 90) { // roll left every ~90ms, newest on the right
+          wave.last = t
+          for (let i = 0; i < bars.length - 1; i++) bars[i].style.height = bars[i + 1].style.height
+          bars[bars.length - 1].style.height = `${2 + level * 16}px`
+        }
+        wave.raf = requestAnimationFrame(tick)
+      }
+      wave.raf = requestAnimationFrame(tick)
+    } catch { /* see above */ }
+  }
+
+  _stopWave() {
+    if (this._wave) {
+      cancelAnimationFrame(this._wave.raf)
+      try { this._wave.ctx.close() } catch { /* already closed */ }
+      this._wave = null
+    }
+    if (this._waveEl) {
+      this._waveEl.hidden = true
+      for (const b of this._waveEl.children) b.style.height = '2px'
+    }
+  }
+
   disconnectedCallback() {
     this._disconnected = true
+    this._stopWave()
     if (this._t) this._t.dispose()
 
     const session = this._session
@@ -132,6 +189,7 @@ class MicTextMic extends HTMLElement {
     session.rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) session.chunks.push(ev.data) }
     session.rec.start()
     this._btn.classList.add('recording')
+    this._startWave(stream)
   }
 
   async _stop() {
@@ -142,6 +200,7 @@ class MicTextMic extends HTMLElement {
     if (!session.rec) return // getUserMedia still pending; _runStart will tear it down
     const { rec, stream } = session
     this._btn.classList.remove('recording')
+    this._stopWave()
     const stopped = new Promise((res) => { rec.onstop = res; setTimeout(res, 5000) })
     rec.stop()
     await stopped
