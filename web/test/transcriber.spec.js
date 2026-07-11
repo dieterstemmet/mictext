@@ -14,7 +14,7 @@ function fakeWorker({ elapsedMs = 100, failLoad = false, failDevice = null } = {
           const fail = failLoad || msg.device === failDevice
           w.onmessage({ data: fail ? { type: 'error', message: 'no backend' } : { type: 'ready' } })
         } else if (msg.type === 'transcribe') {
-          w.onmessage({ data: { type: 'result', text: 'hello dahican', elapsedMs } })
+          w.onmessage({ data: { type: 'result', text: 'hello world', elapsedMs } })
         }
       })
     },
@@ -46,7 +46,7 @@ describe('createTranscriber', () => {
     const t = createTranscriber({ createWorker: () => fakeWorker() })
     expect(t.state).toBe('idle')
     const { text } = await t.transcribeBlob(new Blob([new Uint8Array([1])]))
-    expect(text).toBe('hello dahican')
+    expect(text).toBe('hello world')
     expect(t.mode).toBe('device')
     expect(t.state).toBe('idle')
   })
@@ -73,7 +73,7 @@ describe('createTranscriber', () => {
       createWorker: () => { const w = fakeWorker({ failDevice: 'webgpu' }); workers.push(w); return w },
     })
     const { text } = await t.transcribeBlob(new Blob([new Uint8Array([1])]))
-    expect(text).toBe('hello dahican')
+    expect(text).toBe('hello world')
     expect(t.mode).toBe('device')
     expect(workers.length).toBe(2)
     expect(workers[0].terminated).toBe(true)
@@ -100,8 +100,8 @@ describe('createTranscriber', () => {
       t.transcribeBlob(new Blob([new Uint8Array([1])])),
       t.transcribeBlob(new Blob([new Uint8Array([2])])),
     ])
-    expect(a.text).toBe('hello dahican')
-    expect(b.text).toBe('hello dahican')
+    expect(a.text).toBe('hello world')
+    expect(b.text).toBe('hello world')
   })
 })
 
@@ -193,7 +193,7 @@ describe('slow-device policy', () => {
     await new Promise((r) => setTimeout(r, 10)) // let the wedged transcribe get posted
     t.dispose()
     const { text } = await t.transcribeBlob(new Blob([new Uint8Array([1])]))
-    expect(text).toBe('hello dahican')
+    expect(text).toBe('hello world')
     expect(made).toBe(2)
     hung.catch(() => {}) // wedged promise never settles; silence any late rejection
   })

@@ -47,8 +47,8 @@ These tests confirm the setup works end-to-end. Perform them on a Windows 10/11 
 
 - [ ] **Test 2: Notepad**
   - Open Notepad or any text app
-  - Hold Right Ctrl, say "testing one two three from Dahican", release
-  - "testing one two three from Dahican" appears typed in the editor
+  - Hold Right Ctrl, say "testing one two three", release
+  - "testing one two three" appears typed in the editor
 
 - [ ] **Test 3: Web form in a browser**
   - Open a browser and navigate to any page with a text input (e.g. a search engine)
