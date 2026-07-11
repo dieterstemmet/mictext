@@ -45,7 +45,8 @@ end
 local function showHud()
   local f = hs.screen.mainScreen():frame()
   local w = 20 + BARS * 11
-  hud = hs.canvas.new({ x = f.x + (f.w - w) / 2, y = f.y + 24, w = w, h = 36 })
+  -- Bottom-center, floating above the Dock area — matches the web mic's sheet.
+  hud = hs.canvas.new({ x = f.x + (f.w - w) / 2, y = f.y + f.h - 36 - 24, w = w, h = 36 })
   hud[1] = {
     type = "rectangle", action = "fill",
     fillColor = { red = 0.10, green = 0.10, blue = 0.10, alpha = 0.85 },
