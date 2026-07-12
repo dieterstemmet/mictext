@@ -21,7 +21,7 @@ A_IconTip := "MicText (hold " HOLD_KEY " to dictate)"
 recPid := 0
 downAt := 0
 
-; -- live waveform meter ------------------------------------------------------
+; -- live waveform meter (tuning constants: keep in sync with mac/mictext.lua) ------------------------------------------------------
 ; The recording ffmpeg also runs the pass-through astats filter, appending RMS
 ; lines to RMS (audio unchanged). A 70ms timer tails that file and drives 14
 ; rolling vertical bars in a small always-on-top pill — same look and feel as

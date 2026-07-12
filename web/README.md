@@ -42,6 +42,9 @@ Use this layer directly if you're building your own UI/hold-to-talk logic.
   addEventListener('transcript', (e) => console.log(e.detail.text))
   addEventListener('voice-error', (e) => alert(e.detail.message))
 </script>
+<!-- base.en is noticeably more accurate but exceeds WebKit's per-tab memory
+     ceiling: Safari (macOS AND all iOS browsers) OOM-kills the page mid-
+     inference. Only pin base.en where you control the browsers. -->
 <mictext-mic model="onnx-community/whisper-base.en" slow-device="disable"></mictext-mic>
 ```
 
@@ -59,6 +62,22 @@ object *before* the element is inserted into the DOM — it's read once in
 
 The element hides itself (`hidden = true`) if the device is degraded to
 `unsupported` (see policy table below).
+
+## Crash probe & the live waveform
+
+WebKit can OOM-kill the whole tab during inference with no catchable error
+("A problem repeatedly occurred"). `<mictext-mic>` writes a per-tab
+localStorage marker around every risky span (model load, transcription); a
+fresh marker found at the next boot means the last attempt took the page
+down, and the element then hides itself on that device permanently and emits
+a `voice-error`. Recover with `customElements.get('mictext-mic').resetProbe()`
+(e.g. after switching to a smaller model). Since 0.2.0 the default model is
+`whisper-tiny.en` for exactly this reason — pass `model=` to opt into larger
+models where you know the device.
+
+While recording, the element shows a rolling waveform (thin white bars on a
+dark lozenge) driven by live mic RMS. It is purely cosmetic: if AudioContext
+is unavailable the bars stay flat and recording is unaffected.
 
 ## Demo
 

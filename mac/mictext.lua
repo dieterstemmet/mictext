@@ -23,7 +23,7 @@ local menubar = hs.menubar.new()
 local function setIcon(rec) menubar:setTitle(rec and "🔴" or "🎙") end
 setIcon(false)
 
--- Live waveform HUD: rolling RMS bars (matches the web mic's look). Levels
+-- Live waveform HUD (tuning constants: keep in sync with win/mictext.ahk): rolling RMS bars (matches the web mic's look). Levels
 -- come free from the SAME recording ffmpeg via the pass-through astats
 -- filter — the captured audio is untouched, ffmpeg just also prints RMS.
 local BARS = 14

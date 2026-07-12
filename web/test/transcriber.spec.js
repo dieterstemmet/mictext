@@ -168,6 +168,48 @@ describe('slow-device policy', () => {
     await expect(t.transcribeBlob(new Blob([new Uint8Array([1])]))).rejects.toThrow()
   })
 
+  it('dispose() SETTLES the in-flight request so caller finally blocks run', async () => {
+    // Worker answers load+benchmark then wedges on the real transcribe.
+    let transcribes = 0
+    const w = {
+      onmessage: null, onerror: null,
+      postMessage(msg) {
+        queueMicrotask(() => {
+          if (msg.type === 'load') w.onmessage({ data: { type: 'ready' } })
+          else if (++transcribes === 1) w.onmessage({ data: { type: 'result', text: 'bench', elapsedMs: 100 } })
+        })
+      },
+      terminate() {},
+    }
+    const t = createTranscriber({ createWorker: () => w })
+    let settled = false
+    const hung = t.transcribeBlob(new Blob([new Uint8Array([1])])).catch(() => {}).finally(() => { settled = true })
+    await new Promise((r) => setTimeout(r, 10))
+    t.dispose()
+    await hung
+    expect(settled).toBe(true)
+  })
+
+  it('a request queued behind a worker crash rejects cleanly instead of throwing on null', async () => {
+    let transcribes = 0
+    const w = {
+      onmessage: null, onerror: null,
+      postMessage(msg) {
+        queueMicrotask(() => {
+          if (msg.type === 'load') w.onmessage({ data: { type: 'ready' } })
+          else if (++transcribes === 1) w.onmessage({ data: { type: 'result', text: 'bench', elapsedMs: 100 } })
+          else if (transcribes === 2) w.onerror && w.onerror(new Error('boom')) // crash on first real clip
+        })
+      },
+      terminate() {},
+    }
+    const t = createTranscriber({ createWorker: () => w })
+    const a = t.transcribeBlob(new Blob([new Uint8Array([1])]))
+    const b = t.transcribeBlob(new Blob([new Uint8Array([2])]))
+    await expect(a).rejects.toThrow()
+    await expect(b).rejects.toThrow(/disposed|crashed/) // clean rejection, not a null TypeError
+  })
+
   it('dispose() unwedges the queue: next transcribe runs on a fresh worker', async () => {
     // First worker answers load + the benchmark, then wedges on the real
     // transcribe. dispose() must reset the queue so worker #2 can serve.

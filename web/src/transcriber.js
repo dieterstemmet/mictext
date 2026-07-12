@@ -28,20 +28,31 @@ export function createTranscriber(opts = {}) {
   // Serialize requests: concurrent callers would otherwise clobber onmessage.
   // ponytail: single promise queue, fine for a serial worker.
   let queue = Promise.resolve()
+  // Reject hook for the in-flight request: dispose()/worker teardown must
+  // SETTLE it — an abandoned pending promise leaks callers' finally blocks
+  // (e.g. the mic element's crash-probe marker never clears).
+  let pendingReject = null
   function request(msg, transfer) {
     const p = queue.then(() => new Promise((resolve, reject) => {
+      // The worker may have been torn down while this request sat queued
+      // behind the one that crashed — fail cleanly, don't deref null.
+      if (!worker) { reject(new Error('transcriber disposed')); return }
+      pendingReject = reject
+      const settle = (fn) => (v) => { pendingReject = null; fn(v) }
+      const done = settle(resolve)
+      const fail = settle(reject)
       worker.onmessage = ({ data }) => {
         if (data.type === 'progress') { if (onProgress) onProgress(data.progress); return }
-        if (data.type === 'error') reject(new Error(data.message))
-        else resolve(data)
+        if (data.type === 'error') fail(new Error(data.message))
+        else done(data)
       }
       // A worker that CRASHES (mobile OOM, runtime fault) never posts a
       // message — without these the request promise hangs forever and the
       // caller spins on "Transcribing…" indefinitely. The crashed worker is
       // torn down so the NEXT attempt starts from a clean load instead of
       // posting into a corpse.
-      worker.onerror = (e) => { _faultReset(); reject(new Error((e && e.message) || 'worker crashed')) }
-      worker.onmessageerror = () => { _faultReset(); reject(new Error('worker message deserialization failed')) }
+      worker.onerror = (e) => { _workerReset(); fail(new Error((e && e.message) || 'worker crashed')) }
+      worker.onmessageerror = () => { _workerReset(); fail(new Error('worker message deserialization failed')) }
       worker.postMessage(msg, transfer)
     }))
     queue = p.catch(() => {})
@@ -119,17 +130,31 @@ export function createTranscriber(opts = {}) {
     }
   }
 
-  // Tear down worker state so the next load()/request() starts clean. Resetting
+  // Tear down the worker + queue so the next request() starts clean, and
+  // SETTLE any in-flight request (callers' finally blocks must run). Resetting
   // `queue` is essential: a wedged in-flight request would otherwise chain every
   // future request onto a promise that never settles (permanent on-device hang).
-  function _faultReset() {
+  // Deliberately does NOT touch loadPromise: during load()'s webgpu→wasm retry
+  // the fault path runs mid-load, and nulling loadPromise there would let a
+  // second load() race in later, orphaning a fully-loaded worker (doubled
+  // model memory on exactly the weak devices this serves).
+  function _workerReset() {
     if (worker) { worker.terminate(); worker = null }
-    loadPromise = null
     queue = Promise.resolve()
+    // Crash AFTER a completed load → clear loadPromise so the next attempt
+    // reloads fresh. Crash DURING load → leave it: load() is still running
+    // its own webgpu→wasm retry/degrade logic on that very promise.
+    if (t.state !== 'loading-model') loadPromise = null
+    if (pendingReject) {
+      const r = pendingReject
+      pendingReject = null
+      r(new Error('transcriber disposed'))
+    }
   }
 
   t.dispose = function dispose() {
-    _faultReset()
+    _workerReset()
+    loadPromise = null
   }
 
   return t

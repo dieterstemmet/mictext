@@ -39,6 +39,7 @@ describe('<mictext-mic>', () => {
     vi.clearAllMocks()
     fakeMedia()
     localStorage.clear()
+    sessionStorage.setItem('mictext-tab', 'testtab')
     customElements.get('mictext-mic').resetProbe()
   })
 
@@ -105,27 +106,38 @@ describe('<mictext-mic>', () => {
 
   describe('crash probe (WebKit OOM tab-kill detection)', () => {
     it('a fresh marker at boot blocks the device and hides the mic', async () => {
-      localStorage.setItem('mictext-probe', String(Date.now() - 1000))
+      localStorage.setItem('mictext-probe:testtab', String(Date.now() - 1000))
       const errors = []
       document.body.addEventListener('voice-error', (e) => errors.push(e.detail.message))
       const el = document.createElement('mictext-mic')
       document.body.appendChild(el)
       expect(el.hidden).toBe(true)
-      expect(localStorage.getItem('mictext-probe')).toBe('blocked')
+      expect(localStorage.getItem('mictext-blocked')).toBe('1')
       expect(transcriber.load).not.toHaveBeenCalled()
+      await new Promise((r) => setTimeout(r, 0)) // error dispatch is async by design
       expect(errors.length).toBe(1)
     })
 
     it('a stale marker (tab closed mid-work, not a crash) is cleared and the mic works', async () => {
-      localStorage.setItem('mictext-probe', String(Date.now() - 10 * 60 * 1000))
+      localStorage.setItem('mictext-probe:testtab', String(Date.now() - 10 * 60 * 1000))
       const el = document.createElement('mictext-mic')
       document.body.appendChild(el)
       expect(el.hidden).toBe(false)
       expect(transcriber.load).toHaveBeenCalled()
     })
 
+    it("another tab's fresh marker is ignored — no false block from two-tab use", async () => {
+      localStorage.setItem('mictext-probe:othertab', String(Date.now() - 1000))
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      expect(el.hidden).toBe(false)
+      expect(transcriber.load).toHaveBeenCalled()
+      // and we must NOT have clobbered the other tab's live marker
+      expect(localStorage.getItem('mictext-probe:othertab')).not.toBe(null)
+    })
+
     it('a blocked device stays blocked on later boots', async () => {
-      localStorage.setItem('mictext-probe', 'blocked')
+      localStorage.setItem('mictext-blocked', '1')
       const el = document.createElement('mictext-mic')
       document.body.appendChild(el)
       expect(el.hidden).toBe(true)
@@ -141,7 +153,7 @@ describe('<mictext-mic>', () => {
       await new Promise((r) => setTimeout(r, 350))
       el.dispatchEvent(new Event('pointerup'))
       await got
-      expect(localStorage.getItem('mictext-probe')).toBe(null)
+      expect(localStorage.getItem('mictext-probe:testtab')).toBe(null)
     })
 
     it('the marker is SET during the risky inference span', async () => {
@@ -154,10 +166,10 @@ describe('<mictext-mic>', () => {
       await new Promise((r) => setTimeout(r, 350))
       el.dispatchEvent(new Event('pointerup'))
       await new Promise((r) => setTimeout(r, 0))
-      expect(Number(localStorage.getItem('mictext-probe'))).toBeGreaterThan(0) // armed mid-inference
+      expect(localStorage.getItem('mictext-probe:testtab')).toMatch(/^\d+$/) // armed mid-inference
       resolveTranscribe({ text: 'done' })
       await new Promise((r) => setTimeout(r, 0))
-      expect(localStorage.getItem('mictext-probe')).toBe(null)
+      expect(localStorage.getItem('mictext-probe:testtab')).toBe(null)
     })
   })
 })

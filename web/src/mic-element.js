@@ -10,42 +10,66 @@ const CANCEL_MS = 300
 // blocked from on-device transcription permanently (MicTextMic.resetProbe()
 // to retry, e.g. after switching to a smaller model).
 //
-// The marker is a timestamp: a STALE marker means the tab was closed mid-work
-// (download on a slow link, user gave up) — that's not a crash, so it's
-// cleared and the device gets another chance.
-const PROBE_KEY = 'mictext-probe'
+// Each tab owns its own marker key (`mictext-probe:<tabId>`, tabId from
+// sessionStorage — survives a crash-reload in the same tab, differs across
+// tabs), so concurrent tabs never clobber or misread each other's markers.
+// The device-wide block flag is a separate shared key. The timestamp is
+// re-stamped every 30s while work is in flight, so even a crash minutes into
+// a long inference still reads as fresh at the next boot; a genuinely STALE
+// own marker means the tab was closed mid-work (not a crash) and is cleared.
+const BLOCK_KEY = 'mictext-blocked'
 const PROBE_FRESH_MS = 120000
+const PROBE_RESTAMP_MS = 30000
 let probeGuards = 0
+let probeTimer = 0
 
-function probeRead() {
-  try { return localStorage.getItem(PROBE_KEY) } catch { return null }
-}
-function probeWrite(v) {
+function tabId() {
   try {
-    if (v === null) localStorage.removeItem(PROBE_KEY)
-    else localStorage.setItem(PROBE_KEY, v)
+    let id = sessionStorage.getItem('mictext-tab')
+    if (!id) {
+      id = Math.random().toString(36).slice(2, 10)
+      sessionStorage.setItem('mictext-tab', id)
+    }
+    return id
+  } catch { return 'notab' }
+}
+function probeKey() { return `mictext-probe:${tabId()}` }
+function lsGet(k) {
+  try { return localStorage.getItem(k) } catch { return null }
+}
+function lsSet(k, v) {
+  try {
+    if (v === null) localStorage.removeItem(k)
+    else localStorage.setItem(k, v)
   } catch { /* no storage = no probe, attempt anyway */ }
 }
+function stamp() { lsSet(probeKey(), String(Date.now())) }
 // load() and transcribeBlob() overlap (transcribe awaits load), so the marker
 // is refcounted: it clears only when the LAST risky span finishes.
 function guardStart() {
   probeGuards += 1
-  probeWrite(String(Date.now()))
+  stamp()
+  if (!probeTimer) probeTimer = setInterval(stamp, PROBE_RESTAMP_MS)
 }
 function guardEnd() {
   probeGuards = Math.max(0, probeGuards - 1)
-  if (probeGuards === 0) probeWrite(null)
+  if (probeGuards === 0) {
+    clearInterval(probeTimer)
+    probeTimer = 0
+    lsSet(probeKey(), null)
+  }
 }
 // Returns true when this device is (now) blocked from on-device attempts.
 function probeBlocked() {
-  const marker = probeRead()
-  if (marker === 'blocked') return true
-  if (marker) {
-    if (Date.now() - (Number(marker) || 0) < PROBE_FRESH_MS) {
-      probeWrite('blocked') // fresh marker at boot = last attempt crashed the tab
+  if (lsGet(BLOCK_KEY)) return true
+  const ts = lsGet(probeKey()) // only OUR tab's marker is ours to judge
+  if (ts) {
+    lsSet(probeKey(), null)
+    if (Date.now() - (Number(ts) || 0) < PROBE_FRESH_MS) {
+      lsSet(BLOCK_KEY, '1') // our fresh marker at boot = last attempt crashed this tab
       return true
     }
-    probeWrite(null) // stale = closed mid-work, not a crash
+    // stale = closed mid-work, not a crash
   }
   return false
 }
@@ -83,7 +107,10 @@ class MicTextMic extends HTMLElement {
     // configured; wire blocked→server mode if a real deployment needs it.
     if (probeBlocked()) {
       this.hidden = true
-      this._emitError('On-device transcription previously crashed this device — mic disabled')
+      // Async: for parser-created elements connectedCallback runs before any
+      // script attaches listeners — a sync dispatch would go unheard.
+      queueMicrotask(() =>
+        this._emitError('On-device transcription previously crashed this device — mic disabled'))
       return
     }
 
@@ -222,7 +249,10 @@ class MicTextMic extends HTMLElement {
   // Clear the crash block (e.g. to retry after switching to a smaller model).
   static resetProbe() {
     probeGuards = 0
-    probeWrite(null)
+    clearInterval(probeTimer)
+    probeTimer = 0
+    lsSet(BLOCK_KEY, null)
+    lsSet(probeKey(), null)
   }
 
   _emitError(message) {
