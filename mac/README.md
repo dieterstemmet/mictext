@@ -50,8 +50,8 @@ These tests confirm the setup works end-to-end. Perform them on a Mac with the H
 
 - [ ] **Test 1: Notes app**
   - Open Apple Notes or any text app
-  - Hold right-⌥, say "testing one two three from Dahican", release
-  - "testing one two three from Dahican" appears typed in the editor
+  - Hold right-⌥, say "testing one two three", release — a small waveform HUD appears bottom-center while recording
+  - "testing one two three" appears typed in the editor
 
 - [ ] **Test 2: Web form in a browser**
   - Open a browser and navigate to any page with a text input (e.g. a search engine)

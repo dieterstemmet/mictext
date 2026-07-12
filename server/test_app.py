@@ -15,7 +15,7 @@ class StubModel:
         class Info:
             duration = 2.5
         class Seg:
-            text = " hello dahican"
+            text = " hello world"
         return iter([Seg()]), Info()
 
 
@@ -52,7 +52,7 @@ def test_oversize_413(monkeypatch):
 def test_happy_path():
     r = client.post("/transcribe", files=AUDIO, headers={"X-API-Key": "k1"})
     assert r.status_code == 200
-    assert r.json() == {"text": "hello dahican", "duration_ms": 2500}
+    assert r.json() == {"text": "hello world", "duration_ms": 2500}
 
 
 def test_health():

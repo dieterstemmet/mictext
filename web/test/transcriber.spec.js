@@ -14,7 +14,7 @@ function fakeWorker({ elapsedMs = 100, failLoad = false, failDevice = null } = {
           const fail = failLoad || msg.device === failDevice
           w.onmessage({ data: fail ? { type: 'error', message: 'no backend' } : { type: 'ready' } })
         } else if (msg.type === 'transcribe') {
-          w.onmessage({ data: { type: 'result', text: 'hello dahican', elapsedMs } })
+          w.onmessage({ data: { type: 'result', text: 'hello world', elapsedMs } })
         }
       })
     },
@@ -46,7 +46,7 @@ describe('createTranscriber', () => {
     const t = createTranscriber({ createWorker: () => fakeWorker() })
     expect(t.state).toBe('idle')
     const { text } = await t.transcribeBlob(new Blob([new Uint8Array([1])]))
-    expect(text).toBe('hello dahican')
+    expect(text).toBe('hello world')
     expect(t.mode).toBe('device')
     expect(t.state).toBe('idle')
   })
@@ -73,7 +73,7 @@ describe('createTranscriber', () => {
       createWorker: () => { const w = fakeWorker({ failDevice: 'webgpu' }); workers.push(w); return w },
     })
     const { text } = await t.transcribeBlob(new Blob([new Uint8Array([1])]))
-    expect(text).toBe('hello dahican')
+    expect(text).toBe('hello world')
     expect(t.mode).toBe('device')
     expect(workers.length).toBe(2)
     expect(workers[0].terminated).toBe(true)
@@ -100,8 +100,8 @@ describe('createTranscriber', () => {
       t.transcribeBlob(new Blob([new Uint8Array([1])])),
       t.transcribeBlob(new Blob([new Uint8Array([2])])),
     ])
-    expect(a.text).toBe('hello dahican')
-    expect(b.text).toBe('hello dahican')
+    expect(a.text).toBe('hello world')
+    expect(b.text).toBe('hello world')
   })
 })
 
@@ -152,5 +152,91 @@ describe('slow-device policy', () => {
     await t.transcribeBlob(new Blob([new Uint8Array([1])]))
     const [, init] = globalThis.fetch.mock.calls[0]
     expect(init.headers).not.toHaveProperty('X-API-Key')
+  })
+
+  it('a crashed worker rejects the request instead of hanging forever', async () => {
+    // Worker that never posts a message — only fires the error event (OOM/crash).
+    const w = {
+      onmessage: null,
+      onerror: null,
+      postMessage() {
+        queueMicrotask(() => w.onerror && w.onerror(new Error('worker crashed')))
+      },
+      terminate() {},
+    }
+    const t = createTranscriber({ createWorker: () => w })
+    await expect(t.transcribeBlob(new Blob([new Uint8Array([1])]))).rejects.toThrow()
+  })
+
+  it('dispose() SETTLES the in-flight request so caller finally blocks run', async () => {
+    // Worker answers load+benchmark then wedges on the real transcribe.
+    let transcribes = 0
+    const w = {
+      onmessage: null, onerror: null,
+      postMessage(msg) {
+        queueMicrotask(() => {
+          if (msg.type === 'load') w.onmessage({ data: { type: 'ready' } })
+          else if (++transcribes === 1) w.onmessage({ data: { type: 'result', text: 'bench', elapsedMs: 100 } })
+        })
+      },
+      terminate() {},
+    }
+    const t = createTranscriber({ createWorker: () => w })
+    let settled = false
+    const hung = t.transcribeBlob(new Blob([new Uint8Array([1])])).catch(() => {}).finally(() => { settled = true })
+    await new Promise((r) => setTimeout(r, 10))
+    t.dispose()
+    await hung
+    expect(settled).toBe(true)
+  })
+
+  it('a request queued behind a worker crash rejects cleanly instead of throwing on null', async () => {
+    let transcribes = 0
+    const w = {
+      onmessage: null, onerror: null,
+      postMessage(msg) {
+        queueMicrotask(() => {
+          if (msg.type === 'load') w.onmessage({ data: { type: 'ready' } })
+          else if (++transcribes === 1) w.onmessage({ data: { type: 'result', text: 'bench', elapsedMs: 100 } })
+          else if (transcribes === 2) w.onerror && w.onerror(new Error('boom')) // crash on first real clip
+        })
+      },
+      terminate() {},
+    }
+    const t = createTranscriber({ createWorker: () => w })
+    const a = t.transcribeBlob(new Blob([new Uint8Array([1])]))
+    const b = t.transcribeBlob(new Blob([new Uint8Array([2])]))
+    await expect(a).rejects.toThrow()
+    await expect(b).rejects.toThrow(/disposed|crashed/) // clean rejection, not a null TypeError
+  })
+
+  it('dispose() unwedges the queue: next transcribe runs on a fresh worker', async () => {
+    // First worker answers load + the benchmark, then wedges on the real
+    // transcribe. dispose() must reset the queue so worker #2 can serve.
+    const mkWedged = () => {
+      let transcribes = 0
+      const w = {
+        onmessage: null,
+        onerror: null,
+        postMessage(msg) {
+          queueMicrotask(() => {
+            if (msg.type === 'load') w.onmessage({ data: { type: 'ready' } })
+            else if (++transcribes === 1) w.onmessage({ data: { type: 'result', text: 'bench', elapsedMs: 100 } })
+            // 2nd transcribe: no reply, ever (wedged worker)
+          })
+        },
+        terminate() {},
+      }
+      return w
+    }
+    let made = 0
+    const t = createTranscriber({ createWorker: () => { made += 1; return made === 1 ? mkWedged() : fakeWorker() } })
+    const hung = t.transcribeBlob(new Blob([new Uint8Array([1])]))
+    await new Promise((r) => setTimeout(r, 10)) // let the wedged transcribe get posted
+    t.dispose()
+    const { text } = await t.transcribeBlob(new Blob([new Uint8Array([1])]))
+    expect(text).toBe('hello world')
+    expect(made).toBe(2)
+    hung.catch(() => {}) // wedged promise never settles; silence any late rejection
   })
 })

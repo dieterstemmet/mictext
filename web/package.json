@@ -1,6 +1,6 @@
 {
   "name": "mictext",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "On-device speech-to-text for the browser: Whisper in a Web Worker over WebGPU/WASM, zero audio upload",
   "type": "module",
   "license": "MIT",
