@@ -281,4 +281,35 @@ describe('<mictext-mic>', () => {
       expect(localStorage.getItem('mictext-blocked')).toBe(null)
     })
   })
+
+  it('reflects a busy attribute while loading and while transcribing', async () => {
+    let resolveLoad
+    transcriber.load.mockReturnValueOnce(new Promise((r) => { resolveLoad = r }))
+    const el = document.createElement('mictext-mic')
+    document.body.appendChild(el)
+    expect(el.hasAttribute('busy')).toBe(true) // loading
+    resolveLoad()
+    await settled()
+    expect(el.hasAttribute('busy')).toBe(false) // idle
+
+    let resolveText
+    transcriber.transcribeBlob.mockReturnValueOnce(new Promise((r) => { resolveText = r }))
+    el.dispatchEvent(new Event('pointerdown'))
+    await settled()
+    const realNow = Date.now()
+    const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(realNow + 1000)
+    el.dispatchEvent(new Event('pointerup'))
+    await settled()
+    expect(el.hasAttribute('busy')).toBe(true) // transcribing
+    resolveText({ text: 'hi' })
+    await settled()
+    expect(el.hasAttribute('busy')).toBe(false)
+    dateSpy.mockRestore()
+  })
+
+  it('exposes the ring as a part for consumer styling', async () => {
+    const el = document.createElement('mictext-mic')
+    document.body.appendChild(el)
+    expect(el.shadowRoot.querySelector('.ring').getAttribute('part')).toBe('ring')
+  })
 })

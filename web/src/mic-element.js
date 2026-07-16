@@ -127,7 +127,7 @@ class MicTextMic extends HTMLElement {
                   border-radius: 1px; transition: height 90ms linear; }
       </style>
       <span class="wrap">
-        <span class="ring" hidden aria-hidden="true"></span>
+        <span class="ring" part="ring" hidden aria-hidden="true"></span>
         <button type="button" title="Hold to talk"><slot>🎤</slot></button>
       </span>
       <span class="wave" hidden aria-hidden="true">${'<i></i>'.repeat(14)}</span>`
@@ -160,7 +160,7 @@ class MicTextMic extends HTMLElement {
     this._ready = false
     this._btn.disabled = true
     this._btn.title = 'Loading model…'
-    this._ring.hidden = false
+    this._setBusy(true)
     guardStart()
     this._t.load()
       .then(() => {
@@ -169,7 +169,7 @@ class MicTextMic extends HTMLElement {
         this._btn.disabled = false
         this._btn.title = 'Hold to talk'
       })
-      .finally(() => { this._ring.hidden = true; guardEnd() })
+      .finally(() => { this._setBusy(false); guardEnd() })
 
     this.addEventListener('pointerdown', () => this._start())
     this.addEventListener('pointerup', () => this._stop())
@@ -284,7 +284,7 @@ class MicTextMic extends HTMLElement {
     if (Date.now() - session.downAt < CANCEL_MS) return // cancel tap
     try {
       this._btn.disabled = true
-      this._ring.hidden = false // "words on the way" — same ring as model load
+      this._setBusy(true) // "words on the way" — same signal as model load
       guardStart() // inference is the crash-prone span on WebKit
       const { text } = await this._t.transcribeBlob(new Blob(session.chunks, { type: 'audio/webm' }))
       if (text) this.dispatchEvent(new CustomEvent('transcript', { detail: { text }, bubbles: true }))
@@ -293,7 +293,7 @@ class MicTextMic extends HTMLElement {
       this._emitError(e.message)
     } finally {
       guardEnd() // a JS error is NOT a crash — only an unreachable finally is
-      this._ring.hidden = true
+      this._setBusy(false)
       this._btn.disabled = false
     }
   }
@@ -305,6 +305,14 @@ class MicTextMic extends HTMLElement {
     probeTimer = 0
     lsSet(BLOCK_KEY, null)
     lsSet(probeKey(), null)
+  }
+
+  // Busy = model loading or a clip transcribing. Shows the shadow ring and
+  // reflects a host `busy` attribute so consumers can drive their own
+  // loading treatment (e.g. animating a slotted logo) from plain CSS.
+  _setBusy(on) {
+    this._ring.hidden = !on
+    this.toggleAttribute('busy', on)
   }
 
   _emitError(message) {

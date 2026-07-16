@@ -11,6 +11,15 @@
   h1 { margin: .25rem 0 .25rem; }
   p  { margin: 0 0 1rem; color: #555; }
   mictext-mic { display: inline-flex; margin: 1rem auto 1.25rem; --mictext-mic-size: 5.5rem; }
+  mictext-mic::part(ring) { display: none; } /* the grille IS the loading animation */
+  /* busy: grille bars wrap around the pill-shaped capsule; animation removal
+     on completion snaps them home */
+  mictext-mic[busy] .logo .grille { animation: grille-wrap 1.4s linear infinite; }
+  @keyframes grille-wrap { to { transform: translateX(-84px); } }
+  @media (prefers-reduced-motion: reduce) {
+    mictext-mic[busy] .logo .grille { animation: grille-dim 1.6s ease-in-out infinite; }
+  }
+  @keyframes grille-dim { 50% { opacity: .35; } }
   textarea { width: 100%; box-sizing: border-box; font-size: 1rem; padding: .6rem;
              border: 1px solid #ccc; border-radius: 8px; min-height: 7rem; }
   #copy { font-size: 1rem; padding: .55rem 1.5rem; margin-top: .6rem; border-radius: 8px;
@@ -43,7 +52,31 @@
 </script>
 <h1>MicText</h1>
 <p>Hold the mic, speak, release. Audio never leaves this device.</p>
-<mictext-mic><img src="logo.svg" alt="Hold to dictate"></mictext-mic>
+<mictext-mic><svg class="logo" viewBox="0 0 240 240" role="img" aria-label="Hold to dictate">
+  <rect x="66" y="24" width="108" height="132" rx="54" fill="#1A1D24"/>
+  <clipPath id="cap"><rect x="66" y="24" width="108" height="132" rx="54"/></clipPath>
+  <g clip-path="url(#cap)">
+    <g class="grille" stroke="#F2EFE7" stroke-width="9" stroke-linecap="round">
+      <line x1="90" y1="58"  x2="150" y2="58"/>
+      <line x1="90" y1="80"  x2="138" y2="80"/>
+      <line x1="90" y1="102" x2="146" y2="102"/>
+      <line x1="90" y1="124" x2="116" y2="124"/>
+      <rect x="126" y="117" width="8" height="15" rx="2" fill="#FF4D3D" stroke="none"/>
+      <g transform="translate(84,0)">
+        <line x1="90" y1="58"  x2="150" y2="58"/>
+        <line x1="90" y1="80"  x2="138" y2="80"/>
+        <line x1="90" y1="102" x2="146" y2="102"/>
+        <line x1="90" y1="124" x2="116" y2="124"/>
+        <rect x="126" y="117" width="8" height="15" rx="2" fill="#FF4D3D" stroke="none"/>
+      </g>
+    </g>
+  </g>
+  <g stroke="#1A1D24" stroke-width="11" stroke-linecap="round" fill="none">
+    <path d="M 50 112 a 70 70 0 0 0 140 0"/>
+    <line x1="120" y1="182" x2="120" y2="206"/>
+    <line x1="90" y1="212" x2="150" y2="212"/>
+  </g>
+</svg></mictext-mic>
 <textarea id="out" placeholder="Your words land here"></textarea>
 <button id="copy">Copy text</button>
 <div id="err" role="alert"></div>
