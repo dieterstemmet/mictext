@@ -1,0 +1,35 @@
+<!doctype html>
+<script type="module" crossorigin src="/mictext/assets/index-DBUcqaLx.js"></script>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MicText — on-device dictation</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="/mictext/assets/logo-Dztk3alc.svg">
+<meta name="theme-color" content="#1A1D24">
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 34rem; margin: 0 auto;
+         padding: 1.5rem 1rem; text-align: center; background: #F7F5F0; color: #1A1D24; }
+  h1 { margin: .25rem 0 .25rem; }
+  p  { margin: 0 0 1rem; color: #555; }
+  mictext-mic { display: inline-block; margin: .75rem auto 1rem; }
+  textarea { width: 100%; box-sizing: border-box; font-size: 1rem; padding: .6rem;
+             border: 1px solid #ccc; border-radius: 8px; min-height: 7rem; }
+  #copy { font-size: 1rem; padding: .55rem 1.5rem; margin-top: .6rem; border-radius: 8px;
+          border: none; background: #1A1D24; color: #F2EFE7; }
+  #copy:active { opacity: .8; }
+  #err { color: #FF4D3D; min-height: 1.2em; margin-top: .5rem; font-size: .9rem; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #16181D; color: #F2EFE7; }
+    p { color: #9aa1ad; }
+    textarea { background: #1F232B; color: #F2EFE7; border-color: #3E4756; }
+    #copy { background: #F2EFE7; color: #1A1D24; }
+  }
+</style>
+<img src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20240%20240'%20width='240'%20height='240'%20role='img'%20aria-label='MicText%20logo:%20a%20microphone%20whose%20grille%20is%20lines%20of%20text%20ending%20in%20a%20red%20caret'%3e%3c!--%20capsule%20--%3e%3crect%20x='66'%20y='24'%20width='108'%20height='132'%20rx='54'%20fill='%231A1D24'/%3e%3c!--%20grille%20=%20lines%20of%20text%20--%3e%3cg%20stroke='%23F2EFE7'%20stroke-width='9'%20stroke-linecap='round'%3e%3cline%20x1='90'%20y1='58'%20x2='150'%20y2='58'/%3e%3cline%20x1='90'%20y1='80'%20x2='138'%20y2='80'/%3e%3cline%20x1='90'%20y1='102'%20x2='146'%20y2='102'/%3e%3cline%20x1='90'%20y1='124'%20x2='116'%20y2='124'/%3e%3c/g%3e%3c!--%20the%20caret:%20text%20being%20typed,%20live%20--%3e%3crect%20x='126'%20y='117'%20width='8'%20height='15'%20rx='2'%20fill='%23FF4D3D'/%3e%3c!--%20cradle%20+%20stem%20+%20base%20--%3e%3cg%20stroke='%231A1D24'%20stroke-width='11'%20stroke-linecap='round'%20fill='none'%3e%3cpath%20d='M%2050%20112%20a%2070%2070%200%200%200%20140%200'/%3e%3cline%20x1='120'%20y1='182'%20x2='120'%20y2='206'/%3e%3cline%20x1='90'%20y1='212'%20x2='150'%20y2='212'/%3e%3c/g%3e%3c/svg%3e" width="72" alt="MicText">
+<h1>MicText</h1>
+<p>Hold the mic, speak, release. Audio never leaves this device.</p>
+<mictext-mic></mictext-mic>
+<textarea id="out" placeholder="Your words land here"></textarea>
+<button id="copy">Copy text</button>
+<div id="err" role="alert"></div>

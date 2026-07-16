@@ -1,5 +1,0 @@
-node_modules/
-.superpowers/
-server/.venv/
-__pycache__/
-web/dist-demo/
