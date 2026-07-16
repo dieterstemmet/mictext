@@ -13,15 +13,15 @@ curl -fsSL https://raw.githubusercontent.com/dieterstemmet/mictext/master/mac/in
 Or from a clone of the repo: `mac/install.sh`.
 
 This will:
-   - Install Hammerspoon (macOS automation framework) via Homebrew
-   - Install ffmpeg (audio recording) and whisper-cpp (speech-to-text)
-   - Download the base English whisper model (~141 MB)
-   - Copy the MicText module into Hammerspoon's config
-   - Update your Hammerspoon init script to load it
+- Install Hammerspoon (macOS automation framework) via Homebrew
+- Install ffmpeg (audio recording) and whisper-cpp (speech-to-text)
+- Download the base English whisper model (~141 MB)
+- Copy the MicText module into Hammerspoon's config
+- Update your Hammerspoon init script to load it
 
-3. Open Hammerspoon (or reload if it's already running)
-   - First launch: Hammerspoon will ask for Accessibility permission → grant it
-   - You may also see a prompt for Microphone access → grant it
+Then open Hammerspoon (or reload if it's already running):
+- First launch: Hammerspoon will ask for Accessibility permission → grant it
+- You may also see a prompt for Microphone access → grant it
 
 ## First-Run Permissions
 
