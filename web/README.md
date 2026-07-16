@@ -57,6 +57,13 @@ transcribes to nothing fires `voice-error` with message
 `No speech detected` — feedback, not a fault. While the model loads the
 button is disabled and titled "Loading model…".
 
+The element's default slot replaces the button face (fallback: 🎤) — slot
+an image (give it `alt` text, it becomes the button's accessible name) or
+any markup; size the button with the `--mictext-mic-size` CSS variable
+(default `2.5rem`). While the model loads or a clip transcribes, a
+two-color ring (the logo's palette) orbits the button; recording shows a
+red halo plus a live waveform.
+
 Attributes: `model`, `slow-device`, `fallback-url`, `fallback-api-key`. For
 anything not expressible as an attribute (e.g. `slowThresholdMs`,
 `onProgress`), set the `transcriberOptions` property to a full options
