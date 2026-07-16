@@ -17,7 +17,11 @@ const CANCEL_MS = 300
 // re-stamped every 30s while work is in flight, so even a crash minutes into
 // a long inference still reads as fresh at the next boot; a genuinely STALE
 // own marker means the tab was closed mid-work (not a crash) and is cleared.
-const BLOCK_KEY = 'mictext-blocked'
+// v2: the original key was set by a flow that couldn't tell a mid-work
+// RELOAD from a crash (any reload during model load false-blocked the
+// device forever). Old flags are untrustworthy — ignored and removed.
+const BLOCK_KEY = 'mictext-blocked2'
+const LEGACY_BLOCK_KEY = 'mictext-blocked'
 const PROBE_FRESH_MS = 120000
 const PROBE_RESTAMP_MS = 30000
 let probeGuards = 0
@@ -59,8 +63,17 @@ function guardEnd() {
     lsSet(probeKey(), null)
   }
 }
+// A graceful reload/navigation fires pagehide; an OOM tab-kill does not.
+// Clearing the marker here means only GENUINE crashes leave one behind.
+// (bfcache restore: the 30s re-stamp interval survives and re-marks work
+// that is still in flight — the guard degrades safely.)
+if (typeof addEventListener === 'function') {
+  addEventListener('pagehide', () => lsSet(probeKey(), null))
+}
+
 // Returns true when this device is (now) blocked from on-device attempts.
 function probeBlocked() {
+  lsSet(LEGACY_BLOCK_KEY, null) // pre-fix flags: void, see BLOCK_KEY note
   if (lsGet(BLOCK_KEY)) return true
   const ts = lsGet(probeKey()) // only OUR tab's marker is ours to judge
   if (ts) {

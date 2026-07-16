@@ -121,7 +121,7 @@ describe('<mictext-mic>', () => {
       const el = document.createElement('mictext-mic')
       document.body.appendChild(el)
       expect(el.hidden).toBe(true)
-      expect(localStorage.getItem('mictext-blocked')).toBe('1')
+      expect(localStorage.getItem('mictext-blocked2')).toBe('1')
       expect(transcriber.load).not.toHaveBeenCalled()
       await new Promise((r) => setTimeout(r, 0)) // error dispatch is async by design
       expect(errors.length).toBe(1)
@@ -146,7 +146,7 @@ describe('<mictext-mic>', () => {
     })
 
     it('a blocked device stays blocked on later boots', async () => {
-      localStorage.setItem('mictext-blocked', '1')
+      localStorage.setItem('mictext-blocked2', '1')
       const el = document.createElement('mictext-mic')
       document.body.appendChild(el)
       expect(el.hidden).toBe(true)
@@ -258,5 +258,27 @@ describe('<mictext-mic>', () => {
     await settled()
     expect(ring.hidden).toBe(true)
     dateSpy.mockRestore()
+  })
+
+  describe('crash-probe false-positive fixes', () => {
+    it('pagehide clears the in-flight marker (reload is not a crash)', async () => {
+      let resolveLoad
+      transcriber.load.mockReturnValueOnce(new Promise((r) => { resolveLoad = r }))
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el) // load starts -> marker stamped
+      expect(localStorage.getItem('mictext-probe:testtab')).toBeTruthy()
+      window.dispatchEvent(new Event('pagehide')) // graceful reload/navigation
+      expect(localStorage.getItem('mictext-probe:testtab')).toBe(null)
+      resolveLoad()
+    })
+
+    it('a legacy (pre-fix) block flag is ignored and cleaned up', async () => {
+      localStorage.setItem('mictext-blocked', '1') // old key: unreliable, void
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      expect(el.hidden).toBe(false)
+      expect(localStorage.getItem('mictext-blocked')).toBe(null)
+    })
   })
 })
