@@ -14,10 +14,14 @@
   mictext-mic::part(ring) { display: none; } /* the grille IS the loading animation */
   /* busy: grille bars wrap around the pill-shaped capsule; animation removal
      on completion snaps them home */
-  mictext-mic[busy] .logo .grille { animation: grille-wrap 1.4s linear infinite; }
+  mictext-mic[busy] .logo .row { animation: grille-wrap 1.4s linear infinite; }
+  /* staggered phases: the rows chase each other around the capsule */
+  mictext-mic[busy] .logo .row:nth-child(2) { animation-delay: -.35s; }
+  mictext-mic[busy] .logo .row:nth-child(3) { animation-delay: -.7s; }
+  mictext-mic[busy] .logo .row:nth-child(4) { animation-delay: -1.05s; }
   @keyframes grille-wrap { to { transform: translateX(-84px); } }
   @media (prefers-reduced-motion: reduce) {
-    mictext-mic[busy] .logo .grille { animation: grille-dim 1.6s ease-in-out infinite; }
+    mictext-mic[busy] .logo .row { animation: grille-dim 1.6s ease-in-out infinite; }
   }
   @keyframes grille-dim { 50% { opacity: .35; } }
   textarea { width: 100%; box-sizing: border-box; font-size: 1rem; padding: .6rem;
@@ -57,18 +61,12 @@
   <clipPath id="mictext-cap"><rect x="66" y="24" width="108" height="132" rx="54"/></clipPath>
   <g clip-path="url(#mictext-cap)">
     <g class="grille" stroke="#F2EFE7" stroke-width="9" stroke-linecap="round">
-      <line x1="90" y1="58"  x2="150" y2="58"/>
-      <line x1="90" y1="80"  x2="138" y2="80"/>
-      <line x1="90" y1="102" x2="146" y2="102"/>
-      <line x1="90" y1="124" x2="116" y2="124"/>
-      <rect x="126" y="117" width="8" height="15" rx="2" fill="#FF4D3D" stroke="none"/>
-      <g transform="translate(84,0)">
-        <line x1="90" y1="58"  x2="150" y2="58"/>
-        <line x1="90" y1="80"  x2="138" y2="80"/>
-        <line x1="90" y1="102" x2="146" y2="102"/>
-        <line x1="90" y1="124" x2="116" y2="124"/>
+      <g class="row"><line x1="90" y1="58"  x2="150" y2="58"/><line x1="174" y1="58"  x2="234" y2="58"/></g>
+      <g class="row"><line x1="90" y1="80"  x2="138" y2="80"/><line x1="174" y1="80"  x2="222" y2="80"/></g>
+      <g class="row"><line x1="90" y1="102" x2="146" y2="102"/><line x1="174" y1="102" x2="230" y2="102"/></g>
+      <g class="row"><line x1="90" y1="124" x2="116" y2="124"/><line x1="174" y1="124" x2="200" y2="124"/>
         <rect x="126" y="117" width="8" height="15" rx="2" fill="#FF4D3D" stroke="none"/>
-      </g>
+        <rect x="210" y="117" width="8" height="15" rx="2" fill="#FF4D3D" stroke="none"/></g>
     </g>
   </g>
   <g stroke="#1A1D24" stroke-width="11" stroke-linecap="round" fill="none">
