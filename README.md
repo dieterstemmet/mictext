@@ -17,6 +17,10 @@
   <img src="https://img.shields.io/badge/license-MIT-1A1D24?style=flat-square" alt="MIT license">
 </p>
 
+<p align="center">
+  <strong><a href="https://dieterstemmet.github.io/mictext/">▶ Try it in your browser</a></strong> — works on your phone too.
+</p>
+
 MicText is an embeddable STT library for the web plus reference
 push-to-talk dictation clients for macOS and Windows, all running
 [Whisper](https://github.com/ggml-org/whisper.cpp) locally. An optional
@@ -48,9 +52,33 @@ const t = createTranscriber()
 const { text } = await t.transcribeBlob(audioBlob)
 ```
 
-**macOS** — `mac/install.sh`, then hold right-⌥ and speak. ([mac/README.md](mac/README.md))
+**macOS** — one line (then hold right-⌥ and speak):
 
-**Windows** — `powershell -ExecutionPolicy Bypass -File win\install.ps1`, then hold Right Ctrl and speak. ([win/README.md](win/README.md))
+```bash
+curl -fsSL https://raw.githubusercontent.com/dieterstemmet/mictext/master/mac/install.sh | bash
+```
+
+**Windows** — one line in PowerShell (then hold Right Ctrl and speak):
+
+```powershell
+irm https://raw.githubusercontent.com/dieterstemmet/mictext/master/win/install.ps1 | iex
+```
+
+([mac/README.md](mac/README.md) / [win/README.md](win/README.md))
+
+## On your phone
+
+Mobile browsers don't allow system-wide dictation, so there's no
+push-to-talk client for iOS/Android — but the web library runs fine on
+phones (the default `whisper-tiny.en` model exists exactly for mobile
+WebKit's memory limits):
+
+- **Use the [hosted demo](https://dieterstemmet.github.io/mictext/)**: open
+  it on your phone, hold the mic, speak, copy the text anywhere. "Add to
+  Home Screen" gives it an app icon.
+- **Embed it** in any web app with `<mictext-mic>` — see [`web/`](web/).
+- System-wide mobile dictation would need a native keyboard app (iOS
+  keyboard extension / Android IME) — a possible future direction.
 
 ## Design: headless core, swappable frontends
 

@@ -81,6 +81,9 @@ is unavailable the bars stay flat and recording is unaffected.
 
 ## Demo
 
+Hosted: **https://dieterstemmet.github.io/mictext/** (works on phones;
+Add to Home Screen for an app icon).
+
 From a clone of [the repo](https://github.com/dieterstemmet/mictext) (the
 demo isn't shipped in the npm package):
 
