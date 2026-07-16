@@ -52,7 +52,10 @@ Hold the button (pointerdown), speak, release (pointerup) — a `transcript`
 CustomEvent fires with `{ detail: { text } }`. Releasing before ~300ms
 cancels the recording without transcribing (accidental-tap guard). Errors
 (mic permission denied, transcription failure) fire a `voice-error` event
-with `{ detail: { message } }` instead of throwing.
+with `{ detail: { message } }` instead of throwing; a recording that
+transcribes to nothing fires `voice-error` with message
+`No speech detected` — feedback, not a fault. While the model loads the
+button is disabled and titled "Loading model…".
 
 Attributes: `model`, `slow-device`, `fallback-url`, `fallback-api-key`. For
 anything not expressible as an attribute (e.g. `slowThresholdMs`,
@@ -153,7 +156,11 @@ exists as an object but `requestAdapter()` unconditionally fails at
 model-load time (`no available backend found ... Failed to get GPU
 adapter`). `transcriber.js` handles this: a failed `'webgpu'` load
 terminates that worker and retries once on a fresh worker with `'wasm'`,
-running the normal benchmark on success. Only when the WASM retry also
+running the normal benchmark on success. Some adapters HANG instead of
+failing (the session compiles forever) — a 30-second stall detector treats
+any load/benchmark span with no worker messages as a crash and takes the
+same wasm retry; download progress messages re-arm it, so slow networks
+never false-trip, and long transcriptions are exempt. Only when the WASM retry also
 fails does the device degrade to `unsupported`/`server`. A `'wasm'`-first
 attempt (no `navigator.gpu`) that fails still degrades immediately, since
 there's nothing left to retry.

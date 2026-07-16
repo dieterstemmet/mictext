@@ -44,11 +44,14 @@ export function createTranscriber(opts = {}) {
       // The worker may have been torn down while this request sat queued
       // behind the one that crashed — fail cleanly, don't deref null.
       if (!worker) { reject(new Error('transcriber disposed')); return }
-      pendingReject = reject
       let stallTimer = 0
       const settle = (fn) => (v) => { pendingReject = null; clearTimeout(stallTimer); fn(v) }
       const done = settle(resolve)
       const fail = settle(reject)
+      // The wrapped fail (not the raw reject): _workerReset's teardown path
+      // must also clear the stall timer, or a dispose() mid-load leaves the
+      // timer live to kill the retried worker 30s later.
+      pendingReject = fail
       // Stalled worker = crashed worker: same teardown, same recovery path.
       const arm = () => {
         if (!stallMs) return

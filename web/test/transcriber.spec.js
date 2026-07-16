@@ -347,4 +347,23 @@ describe('slow-device policy', () => {
       expect(text).toBe('slow but real')
     } finally { vi.useRealTimers() }
   })
+
+  it('dispose during a stall-armed load does not kill the retried worker later', withGpu(async () => {
+    vi.useFakeTimers()
+    try {
+      const workers = []
+      const t = createTranscriber({ createWorker: () => {
+        const w = workers.length === 0 ? silentWorker() : fakeWorker()
+        workers.push(w); return w
+      } })
+      const p = t.load()
+      await vi.advanceTimersByTimeAsync(5000)
+      t.dispose() // rejects the stalled load request; its 30s timer must die too
+      await vi.advanceTimersByTimeAsync(40000) // past the original stall deadline
+      await p // load() settles one way or another; must not throw unhandled
+      // the retried wasm worker (if any) must NOT have been torn down by the
+      // leaked timer of the disposed request
+      if (workers.length > 1) expect(workers[1].terminated).toBe(false)
+    } finally { vi.useRealTimers() }
+  }))
 })
