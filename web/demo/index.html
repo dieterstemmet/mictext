@@ -10,7 +10,7 @@
          padding: 1.5rem 1rem; text-align: center; background: #F7F5F0; color: #1A1D24; }
   h1 { margin: .25rem 0 .25rem; }
   p  { margin: 0 0 1rem; color: #555; }
-  mictext-mic { display: inline-block; margin: .75rem auto 1rem; }
+  mictext-mic { display: inline-flex; margin: 1rem auto 1.25rem; --mictext-mic-size: 5.5rem; }
   textarea { width: 100%; box-sizing: border-box; font-size: 1rem; padding: .6rem;
              border: 1px solid #ccc; border-radius: 8px; min-height: 7rem; }
   #copy { font-size: 1rem; padding: .55rem 1.5rem; margin-top: .6rem; border-radius: 8px;
@@ -41,10 +41,9 @@
     })
   })
 </script>
-<img src="logo.svg" width="72" alt="MicText">
 <h1>MicText</h1>
 <p>Hold the mic, speak, release. Audio never leaves this device.</p>
-<mictext-mic></mictext-mic>
+<mictext-mic><img src="logo.svg" alt="Hold to dictate"></mictext-mic>
 <textarea id="out" placeholder="Your words land here"></textarea>
 <button id="copy">Copy text</button>
 <div id="err" role="alert"></div>

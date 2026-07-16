@@ -218,4 +218,45 @@ describe('<mictext-mic>', () => {
     expect(await err).toBe('No speech detected')
     dateSpy.mockRestore()
   })
+
+  it('slot with 🎤 fallback lets consumers provide a custom button face', async () => {
+    const el = document.createElement('mictext-mic')
+    document.body.appendChild(el)
+    const slot = el.shadowRoot.querySelector('button slot')
+    expect(slot).toBeTruthy()
+    expect(slot.textContent).toBe('🎤')
+  })
+
+  it('loading ring shows while the model loads and hides once ready', async () => {
+    let resolveLoad
+    transcriber.load.mockReturnValueOnce(new Promise((r) => { resolveLoad = r }))
+    const el = document.createElement('mictext-mic')
+    document.body.appendChild(el)
+    const ring = el.shadowRoot.querySelector('.ring')
+    expect(ring.hidden).toBe(false)
+    resolveLoad()
+    await settled()
+    expect(ring.hidden).toBe(true)
+  })
+
+  it('loading ring shows during transcription and hides after', async () => {
+    let resolveText
+    transcriber.transcribeBlob.mockReturnValueOnce(new Promise((r) => { resolveText = r }))
+    const el = document.createElement('mictext-mic')
+    document.body.appendChild(el)
+    await settled()
+    const ring = el.shadowRoot.querySelector('.ring')
+    expect(ring.hidden).toBe(true)
+    el.dispatchEvent(new Event('pointerdown'))
+    await settled()
+    const realNow = Date.now()
+    const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(realNow + 1000)
+    el.dispatchEvent(new Event('pointerup'))
+    await settled()
+    expect(ring.hidden).toBe(false) // transcribing
+    resolveText({ text: 'hi' })
+    await settled()
+    expect(ring.hidden).toBe(true)
+    dateSpy.mockRestore()
+  })
 })

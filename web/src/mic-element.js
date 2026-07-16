@@ -81,20 +81,45 @@ class MicTextMic extends HTMLElement {
 
     this.attachShadow({ mode: 'open' }).innerHTML = `
       <style>
-        :host { display: inline-flex; align-items: center; }
-        button { border: none; border-radius: 50%; width: 2.5rem; height: 2.5rem;
-                 cursor: pointer; background: #eee; font-size: 1.1rem; }
-        button.recording { background: #e33; }
+        :host { display: inline-flex; align-items: center; --mictext-mic-size: 2.5rem; }
+        .wrap { position: relative; display: inline-flex; }
+        button { border: none; border-radius: 50%; box-sizing: border-box;
+                 width: var(--mictext-mic-size); height: var(--mictext-mic-size);
+                 cursor: pointer; background: #eee; font-size: 1.1rem; padding: 0;
+                 display: inline-flex; align-items: center; justify-content: center;
+                 overflow: hidden; }
+        button ::slotted(*) { width: 100%; height: 100%; object-fit: contain;
+                              pointer-events: none; }
+        /* a slotted face hides a background swap — use a halo ring instead */
+        button.recording { box-shadow: 0 0 0 3px #e33; }
         button:disabled { opacity: .5; cursor: default; }
+        /* loading ring: the logo's grille palette (paper + caret red) orbiting
+           the button while the model loads or a clip transcribes */
+        .ring { position: absolute; inset: -7px; border-radius: 50%; pointer-events: none;
+                background: conic-gradient(#FF4D3D 0 25%, #F2EFE7 25% 50%,
+                                           #FF4D3D 50% 75%, #F2EFE7 75% 100%);
+                -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+                mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+                animation: mictext-spin 1s linear infinite; }
+        .ring[hidden] { display: none; }
+        @keyframes mictext-spin { to { transform: rotate(1turn); } }
+        @media (prefers-reduced-motion: reduce) {
+          .ring { animation: mictext-pulse 1.6s ease-in-out infinite; }
+        }
+        @keyframes mictext-pulse { 50% { opacity: .35; } }
         .wave { display: inline-flex; align-items: center; gap: 2px; height: 18px;
                 margin-left: .5rem; }
         .wave[hidden] { display: none; }
         .wave i { width: 2px; min-height: 2px; height: 2px; background: #e33;
                   border-radius: 1px; transition: height 90ms linear; }
       </style>
-      <button type="button" title="Hold to talk">🎤</button>
+      <span class="wrap">
+        <span class="ring" hidden aria-hidden="true"></span>
+        <button type="button" title="Hold to talk"><slot>🎤</slot></button>
+      </span>
       <span class="wave" hidden aria-hidden="true">${'<i></i>'.repeat(14)}</span>`
     this._btn = this.shadowRoot.querySelector('button')
+    this._ring = this.shadowRoot.querySelector('.ring')
     this._waveEl = this.shadowRoot.querySelector('.wave')
 
     const opts = this.transcriberOptions || {
@@ -122,6 +147,7 @@ class MicTextMic extends HTMLElement {
     this._ready = false
     this._btn.disabled = true
     this._btn.title = 'Loading model…'
+    this._ring.hidden = false
     guardStart()
     this._t.load()
       .then(() => {
@@ -130,7 +156,7 @@ class MicTextMic extends HTMLElement {
         this._btn.disabled = false
         this._btn.title = 'Hold to talk'
       })
-      .finally(guardEnd)
+      .finally(() => { this._ring.hidden = true; guardEnd() })
 
     this.addEventListener('pointerdown', () => this._start())
     this.addEventListener('pointerup', () => this._stop())
@@ -245,6 +271,7 @@ class MicTextMic extends HTMLElement {
     if (Date.now() - session.downAt < CANCEL_MS) return // cancel tap
     try {
       this._btn.disabled = true
+      this._ring.hidden = false // "words on the way" — same ring as model load
       guardStart() // inference is the crash-prone span on WebKit
       const { text } = await this._t.transcribeBlob(new Blob(session.chunks, { type: 'audio/webm' }))
       if (text) this.dispatchEvent(new CustomEvent('transcript', { detail: { text }, bubbles: true }))
@@ -253,6 +280,7 @@ class MicTextMic extends HTMLElement {
       this._emitError(e.message)
     } finally {
       guardEnd() // a JS error is NOT a crash — only an unreachable finally is
+      this._ring.hidden = true
       this._btn.disabled = false
     }
   }
