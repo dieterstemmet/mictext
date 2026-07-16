@@ -14,16 +14,19 @@
   mictext-mic::part(ring) { display: none; } /* the grille IS the loading animation */
   /* busy: grille bars wrap around the pill-shaped capsule; animation removal
      on completion snaps them home */
-  /* sequential cascade: each row spins one full wrap during its quarter of
-     the cycle (top first), holding between turns — a hold at -84px is
-     pixel-identical to rest, so hand-offs and loop restarts are seamless */
-  mictext-mic[busy] .logo .row { animation: grille-turn 2s linear infinite; }
-  mictext-mic[busy] .logo .row:nth-child(2) { animation-delay: .5s; }
-  mictext-mic[busy] .logo .row:nth-child(3) { animation-delay: 1s; }
-  mictext-mic[busy] .logo .row:nth-child(4) { animation-delay: 1.5s; }
+  /* overlapping cascade: each row's lap starts halfway through the previous
+     one's (0.3s steps, 0.6s laps in a 1.2s cycle), so a wave ripples down
+     the capsule perpetually — row 1's next lap follows row 4 at the same
+     spacing. The lap is eased (fast middle, soft landing into the hold);
+     a hold at -84px is pixel-identical to rest, so every hand-off and the
+     loop restart are seamless. */
+  mictext-mic[busy] .logo .row { animation: grille-turn 1.2s infinite; }
+  mictext-mic[busy] .logo .row:nth-child(2) { animation-delay: .3s; }
+  mictext-mic[busy] .logo .row:nth-child(3) { animation-delay: .6s; }
+  mictext-mic[busy] .logo .row:nth-child(4) { animation-delay: .9s; }
   @keyframes grille-turn {
-    0%   { transform: translateX(0); }
-    25%  { transform: translateX(-84px); }
+    0%   { transform: translateX(0); animation-timing-function: cubic-bezier(.5, 0, .25, 1); }
+    50%  { transform: translateX(-84px); }
     100% { transform: translateX(-84px); }
   }
   @media (prefers-reduced-motion: reduce) {
