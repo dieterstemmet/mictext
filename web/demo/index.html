@@ -1,13 +1,50 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>MicText demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MicText — on-device dictation</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="logo.svg">
+<meta name="theme-color" content="#1A1D24">
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 34rem; margin: 0 auto;
+         padding: 1.5rem 1rem; text-align: center; background: #F7F5F0; color: #1A1D24; }
+  h1 { margin: .25rem 0 .25rem; }
+  p  { margin: 0 0 1rem; color: #555; }
+  mictext-mic { display: inline-block; margin: .75rem auto 1rem; }
+  textarea { width: 100%; box-sizing: border-box; font-size: 1rem; padding: .6rem;
+             border: 1px solid #ccc; border-radius: 8px; min-height: 7rem; }
+  #copy { font-size: 1rem; padding: .55rem 1.5rem; margin-top: .6rem; border-radius: 8px;
+          border: none; background: #1A1D24; color: #F2EFE7; }
+  #copy:active { opacity: .8; }
+  #err { color: #FF4D3D; min-height: 1.2em; margin-top: .5rem; font-size: .9rem; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #16181D; color: #F2EFE7; }
+    p { color: #9aa1ad; }
+    textarea { background: #1F232B; color: #F2EFE7; border-color: #3E4756; }
+    #copy { background: #F2EFE7; color: #1A1D24; }
+  }
+</style>
 <script type="module">
   import '../src/mic-element.js'
-  const out = () => document.querySelector('#out')
-  addEventListener('transcript', (e) => { out().value += (out().value ? ' ' : '') + e.detail.text })
-  addEventListener('voice-error', (e) => alert(e.detail.message))
+  const $ = (s) => document.querySelector(s)
+  addEventListener('transcript', (e) => {
+    const t = $('#out'); t.value += (t.value ? ' ' : '') + e.detail.text; $('#err').textContent = ''
+  })
+  addEventListener('voice-error', (e) => { $('#err').textContent = e.detail.message })
+  addEventListener('DOMContentLoaded', () => {
+    $('#copy').addEventListener('click', async () => {
+      const t = $('#out')
+      try { await navigator.clipboard.writeText(t.value) }
+      catch { t.select(); document.execCommand('copy') } // clipboard API denied: fall back to selection
+      $('#copy').textContent = 'Copied'
+      setTimeout(() => { $('#copy').textContent = 'Copy text' }, 1200)
+    })
+  })
 </script>
-<img src="logo.svg" width="72" alt="MicText"><h1>MicText</h1>
+<img src="logo.svg" width="72" alt="MicText">
+<h1>MicText</h1>
 <p>Hold the mic, speak, release. Audio never leaves this device.</p>
 <mictext-mic></mictext-mic>
-<textarea id="out" rows="6" cols="60"></textarea>
+<textarea id="out" placeholder="Your words land here"></textarea>
+<button id="copy">Copy text</button>
+<div id="err" role="alert"></div>
