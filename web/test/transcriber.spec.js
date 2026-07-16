@@ -239,4 +239,112 @@ describe('slow-device policy', () => {
     expect(made).toBe(2)
     hung.catch(() => {}) // wedged promise never settles; silence any late rejection
   })
+
+  // --- stall handling (WebGPU adapters that hang instead of failing) -------
+
+  // A worker that accepts the load message and then never posts anything.
+  function silentWorker() {
+    const w = {
+      onmessage: null, terminated: false,
+      postMessage() { /* never replies */ },
+      terminate() { w.terminated = true },
+    }
+    return w
+  }
+
+  it('webgpu load that never responds stalls out and retries wasm', withGpu(async () => {
+    vi.useFakeTimers()
+    try {
+      const workers = []
+      const t = createTranscriber({ createWorker: () => {
+        const w = workers.length === 0 ? silentWorker() : fakeWorker()
+        workers.push(w); return w
+      } })
+      const p = t.load()
+      await vi.advanceTimersByTimeAsync(31000)
+      await p
+      expect(workers.length).toBe(2)
+      expect(workers[0].terminated).toBe(true)
+      expect(t.state).toBe('idle')
+      expect(t.mode).toBe('device')
+    } finally { vi.useRealTimers() }
+  }))
+
+  it('webgpu benchmark that never responds stalls out and retries wasm', withGpu(async () => {
+    vi.useFakeTimers()
+    try {
+      // load succeeds, benchmark (first transcribe) never replies
+      function loadOkBenchSilent() {
+        const w = {
+          onmessage: null, terminated: false,
+          postMessage(msg) {
+            if (msg.type === 'load') queueMicrotask(() => w.onmessage({ data: { type: 'ready' } }))
+            // transcribe: never replies
+          },
+          terminate() { w.terminated = true },
+        }
+        return w
+      }
+      const workers = []
+      const t = createTranscriber({ createWorker: () => {
+        const w = workers.length === 0 ? loadOkBenchSilent() : fakeWorker()
+        workers.push(w); return w
+      } })
+      const p = t.load()
+      await vi.advanceTimersByTimeAsync(62000) // load span + benchmark span
+      await p
+      expect(workers.length).toBe(2)
+      expect(t.state).toBe('idle')
+    } finally { vi.useRealTimers() }
+  }))
+
+  it('webgpu benchmark error retries wasm instead of rejecting load()', withGpu(async () => {
+    function loadOkBenchError() {
+      const w = {
+        onmessage: null,
+        postMessage(msg) {
+          queueMicrotask(() => {
+            if (msg.type === 'load') w.onmessage({ data: { type: 'ready' } })
+            else w.onmessage({ data: { type: 'error', message: 'device lost' } })
+          })
+        },
+        terminate() {},
+      }
+      return w
+    }
+    const workers = []
+    const t = createTranscriber({ createWorker: () => {
+      const w = workers.length === 0 ? loadOkBenchError() : fakeWorker()
+      workers.push(w); return w
+    } })
+    await t.load() // must NOT reject
+    expect(workers.length).toBe(2)
+    expect(t.state).toBe('idle')
+    const { text } = await t.transcribeBlob(new Blob([new Uint8Array([1])]))
+    expect(text).toBe('hello world')
+  }))
+
+  it('long transcriptions are NOT stall-killed', async () => {
+    vi.useFakeTimers()
+    try {
+      let transcribes = 0
+      function slowTranscribe() {
+        const w = {
+          onmessage: null,
+          postMessage(msg) {
+            if (msg.type === 'load') queueMicrotask(() => w.onmessage({ data: { type: 'ready' } }))
+            else if (++transcribes === 1) queueMicrotask(() => w.onmessage({ data: { type: 'result', text: 'bench', elapsedMs: 100 } }))
+            else setTimeout(() => w.onmessage({ data: { type: 'result', text: 'slow but real', elapsedMs: 90000 } }), 90000)
+          },
+          terminate() {},
+        }
+        return w
+      }
+      const t = createTranscriber({ createWorker: slowTranscribe })
+      const p = t.transcribeBlob(new Blob([new Uint8Array([1])]))
+      await vi.advanceTimersByTimeAsync(91000)
+      const { text } = await p
+      expect(text).toBe('slow but real')
+    } finally { vi.useRealTimers() }
+  })
 })

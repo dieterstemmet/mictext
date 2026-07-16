@@ -32,6 +32,10 @@ function fakeMedia() {
   })
 }
 
+// The element now gates recording behind load() settling (ready-gate);
+// tests that record must let the connect-time load resolve first.
+const settled = () => new Promise((r) => setTimeout(r, 0))
+
 describe('<mictext-mic>', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
@@ -46,6 +50,7 @@ describe('<mictext-mic>', () => {
   it('hold -> release emits a transcript event', async () => {
     const el = document.createElement('mictext-mic')
     document.body.appendChild(el)
+    await settled()
     const got = new Promise((res) => el.addEventListener('transcript', (e) => res(e.detail.text)))
     el.dispatchEvent(new Event('pointerdown'))
     await new Promise((r) => setTimeout(r, 350)) // past the 300ms cancel window
@@ -56,6 +61,7 @@ describe('<mictext-mic>', () => {
   it('short tap (<300ms) cancels without transcribing', async () => {
     const el = document.createElement('mictext-mic')
     document.body.appendChild(el)
+    await settled()
     el.dispatchEvent(new Event('pointerdown'))
     el.dispatchEvent(new Event('pointerup'))
     await new Promise((r) => setTimeout(r, 10))
@@ -73,6 +79,7 @@ describe('<mictext-mic>', () => {
   it('stops mic tracks on release', async () => {
     const el = document.createElement('mictext-mic')
     document.body.appendChild(el)
+    await settled()
     el.dispatchEvent(new Event('pointerdown'))
     await new Promise((r) => setTimeout(r, 10))
     el.dispatchEvent(new Event('pointerup'))
@@ -83,6 +90,7 @@ describe('<mictext-mic>', () => {
   it('stops mic tracks when disconnected mid-recording', async () => {
     const el = document.createElement('mictext-mic')
     document.body.appendChild(el)
+    await settled()
     el.dispatchEvent(new Event('pointerdown'))
     await new Promise((r) => setTimeout(r, 10))
     el.remove()
@@ -92,6 +100,7 @@ describe('<mictext-mic>', () => {
   it('shows the live waveform while recording and hides it after', async () => {
     const el = document.createElement('mictext-mic')
     document.body.appendChild(el)
+    await settled()
     const wave = el.shadowRoot.querySelector('.wave')
     expect(wave.hidden).toBe(true)
     el.dispatchEvent(new Event('pointerdown'))
@@ -171,5 +180,42 @@ describe('<mictext-mic>', () => {
       await new Promise((r) => setTimeout(r, 0))
       expect(localStorage.getItem('mictext-probe:testtab')).toBe(null)
     })
+  })
+
+  it('button is disabled until load resolves, then enabled', async () => {
+    let resolveLoad
+    transcriber.load.mockReturnValueOnce(new Promise((r) => { resolveLoad = r }))
+    const el = document.createElement('mictext-mic')
+    document.body.appendChild(el)
+    const btn = el.shadowRoot.querySelector('button')
+    expect(btn.disabled).toBe(true)
+    resolveLoad()
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    expect(btn.disabled).toBe(false)
+  })
+
+  it('does not start recording before load resolves', async () => {
+    transcriber.load.mockReturnValueOnce(new Promise(() => {})) // never resolves
+    const el = document.createElement('mictext-mic')
+    document.body.appendChild(el)
+    await settled()
+    el.dispatchEvent(new Event('pointerdown'))
+    await Promise.resolve()
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled()
+  })
+
+  it('empty transcription emits voice-error "No speech detected"', async () => {
+    transcriber.transcribeBlob.mockResolvedValue({ text: '' })
+    const el = document.createElement('mictext-mic')
+    document.body.appendChild(el)
+    await settled() // let load() settle -> button enabled
+    const err = new Promise((res) => el.addEventListener('voice-error', (e) => res(e.detail.message)))
+    el.dispatchEvent(new Event('pointerdown'))
+    await settled() // getUserMedia + recorder start
+    const realNow = Date.now()
+    const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(realNow + 1000) // past the cancel window
+    el.dispatchEvent(new Event('pointerup'))
+    expect(await err).toBe('No speech detected')
+    dateSpy.mockRestore()
   })
 })

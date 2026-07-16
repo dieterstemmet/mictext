@@ -117,9 +117,19 @@ class MicTextMic extends HTMLElement {
     this._t = createTranscriber(opts)
     // Kick off the (cached) model load early, hide if the device can't run it.
     // The load includes a benchmark inference — crash-guard the whole span.
+    // Until it settles the button is disabled: recording against a transcriber
+    // that may never answer reads as "broken", not "loading".
+    this._ready = false
+    this._btn.disabled = true
+    this._btn.title = 'Loading model…'
     guardStart()
     this._t.load()
-      .then(() => { if (this._t.mode === 'unsupported') this.hidden = true })
+      .then(() => {
+        if (this._t.mode === 'unsupported') { this.hidden = true; return }
+        this._ready = true
+        this._btn.disabled = false
+        this._btn.title = 'Hold to talk'
+      })
       .finally(guardEnd)
 
     this.addEventListener('pointerdown', () => this._start())
@@ -191,7 +201,7 @@ class MicTextMic extends HTMLElement {
   }
 
   _start() {
-    if (this._session) return // already recording / awaiting permission
+    if (!this._ready || this._session) return // still loading / already recording
     const session = { released: false, stream: null, rec: null, chunks: [], downAt: Date.now() }
     this._session = session
     this._runStart(session)
@@ -238,6 +248,7 @@ class MicTextMic extends HTMLElement {
       guardStart() // inference is the crash-prone span on WebKit
       const { text } = await this._t.transcribeBlob(new Blob(session.chunks, { type: 'audio/webm' }))
       if (text) this.dispatchEvent(new CustomEvent('transcript', { detail: { text }, bubbles: true }))
+      else this._emitError('No speech detected') // silence in = silence out, but say so
     } catch (e) {
       this._emitError(e.message)
     } finally {
