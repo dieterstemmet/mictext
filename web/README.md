@@ -62,7 +62,10 @@ an image (give it `alt` text, it becomes the button's accessible name) or
 any markup; size the button with the `--mictext-mic-size` CSS variable
 (default `2.5rem`). While the model loads or a clip transcribes, a
 two-color ring (the logo's palette) orbits the button; recording shows a
-red halo plus a live waveform.
+red halo plus a live waveform. While loading/transcribing the host also
+carries a `busy` attribute — style your own loading treatment off
+`mictext-mic[busy]` (the demo animates its slotted logo this way) and hide
+the built-in ring with `mictext-mic::part(ring) { display: none }`.
 
 Attributes: `model`, `slow-device`, `fallback-url`, `fallback-api-key`. For
 anything not expressible as an attribute (e.g. `slowThresholdMs`,
