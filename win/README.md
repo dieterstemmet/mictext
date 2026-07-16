@@ -4,18 +4,22 @@ Hold Right Ctrl anywhere, speak, then release — your words appear typed at the
 
 ## Installation
 
-1. Clone or navigate to the MicText repo, then from its root run the installer:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File win\install.ps1
-   ```
-   This will:
-   - Install AutoHotkey v2 and ffmpeg via winget
-   - Download whisper.cpp release binaries (`whisper-cli.exe` and its DLLs)
-   - Download the base English whisper model (~141 MB)
-   - Auto-detect your microphone and write it to `mic.txt`
-   - Create a shortcut in the Startup folder so MicText runs at login
+One line, no clone needed — open **PowerShell** and run:
 
-2. Double-click `%USERPROFILE%\.mictext\mictext.ahk` to start it now (it also auto-starts at your next login via the Startup shortcut)
+```powershell
+irm https://raw.githubusercontent.com/dieterstemmet/mictext/master/win/install.ps1 | iex
+```
+
+Or from a clone of the repo: `powershell -ExecutionPolicy Bypass -File win\install.ps1`.
+
+This will:
+- Install AutoHotkey v2 and ffmpeg via winget
+- Download whisper.cpp release binaries (`whisper-cli.exe` and its DLLs)
+- Download the base English whisper model (~141 MB)
+- Auto-detect your microphone and write it to `mic.txt`
+- Create a shortcut in the Startup folder so MicText runs at login
+
+Double-click `%USERPROFILE%\.mictext\mictext.ahk` to start it now (it also auto-starts at your next login via the Startup shortcut)
 
 ## First-Run Permissions
 
@@ -40,6 +44,10 @@ Right Ctrl is passed through while held, so it still works as a normal modifier 
 ## Manual Verification Checklist
 
 These tests confirm the setup works end-to-end. Perform them on a Windows 10/11 PC.
+
+- [ ] **Test 0: One-line install**
+  - On a Windows box without the repo cloned, run the one-liner above in PowerShell
+  - It reaches "Mic: ..." (or the no-device warning) and "Done. ..."; `%USERPROFILE%\.mictext\mictext.ahk` exists
 
 - [ ] **Test 1: Installer**
   - Run `powershell -ExecutionPolicy Bypass -File win\install.ps1` on a stock Windows 10/11 box (non-elevated is fine)

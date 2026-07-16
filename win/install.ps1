@@ -51,7 +51,13 @@ if ($mic) {
 }
 
 # --- install script + run at startup --------------------------------------
-Copy-Item "$PSScriptRoot\mictext.ahk" "$base\mictext.ahk" -Force
+# from a clone: copy the script; from `irm | iex`: $PSScriptRoot is empty -- fetch it
+if ($PSScriptRoot -and (Test-Path "$PSScriptRoot\mictext.ahk")) {
+    Copy-Item "$PSScriptRoot\mictext.ahk" "$base\mictext.ahk" -Force
+} else {
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/dieterstemmet/mictext/master/win/mictext.ahk" -OutFile "$base\mictext.ahk.tmp"
+    Move-Item "$base\mictext.ahk.tmp" "$base\mictext.ahk" -Force
+}
 $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut(
     "$([Environment]::GetFolderPath('Startup'))\mictext.lnk")
 $lnk.TargetPath = "$base\mictext.ahk"
