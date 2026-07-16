@@ -13,7 +13,13 @@ MODEL=~/.mictext/models/ggml-base.en.bin
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
   mv "$MODEL.tmp" "$MODEL"
 }
-cp "$(dirname "$0")/mictext.lua" ~/.hammerspoon/mictext.lua
+# from a clone: copy the module; from `curl | bash`: fetch it
+if [ -f "$(dirname "$0")/mictext.lua" ]; then
+  cp "$(dirname "$0")/mictext.lua" ~/.hammerspoon/mictext.lua
+else
+  curl -fsSL "https://raw.githubusercontent.com/dieterstemmet/mictext/master/mac/mictext.lua" \
+    -o ~/.hammerspoon/mictext.lua
+fi
 grep -qF 'require("mictext")' ~/.hammerspoon/init.lua 2>/dev/null || \
   echo 'require("mictext")' >> ~/.hammerspoon/init.lua
 echo "Done. Start Hammerspoon, grant Accessibility + Microphone permissions, reload config."

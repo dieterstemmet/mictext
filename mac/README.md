@@ -4,16 +4,15 @@ Hold right-⌥ (right Option key) anywhere, speak, then release — your words a
 
 ## Installation
 
-1. Clone or navigate to the MicText repo:
-   ```bash
-   cd ~/Personal/mictext
-   ```
+One line, no clone needed:
 
-2. Run the installer:
-   ```bash
-   mac/install.sh
-   ```
-   This will:
+```bash
+curl -fsSL https://raw.githubusercontent.com/dieterstemmet/mictext/master/mac/install.sh | bash
+```
+
+Or from a clone of the repo: `mac/install.sh`.
+
+This will:
    - Install Hammerspoon (macOS automation framework) via Homebrew
    - Install ffmpeg (audio recording) and whisper-cpp (speech-to-text)
    - Download the base English whisper model (~141 MB)
@@ -47,6 +46,10 @@ Once granted, Hammerspoon will reload and the 🎙 icon will appear in the menub
 ## Manual Verification Checklist
 
 These tests confirm the setup works end-to-end. Perform them on a Mac with the Hammerspoon client installed:
+
+- [ ] **Test 0: One-line install**
+  - On a Mac without the repo cloned, run the one-liner above
+  - It completes with "Done. Start Hammerspoon, ..." and `~/.hammerspoon/mictext.lua` exists
 
 - [ ] **Test 1: Notes app**
   - Open Apple Notes or any text app
