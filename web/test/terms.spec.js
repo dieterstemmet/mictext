@@ -36,7 +36,9 @@ describe('storage', () => {
   it('coerces non-string heard/said instead of letting them crash a consumer', () => {
     localStorage.setItem('mictext-terms', JSON.stringify([{ heard: 123, said: 'abc' }]))
     const terms = loadTerms()
-    expect(terms).toEqual([{ heard: '123', said: 'abc' }])
+    // n is normalized to a number even when the stored entry omits it, so
+    // learn()'s count arithmetic can never see undefined.
+    expect(terms).toEqual([{ heard: '123', said: 'abc', n: 0 }])
     expect(() => applyTerms('123 test', terms)).not.toThrow()
   })
 })
