@@ -48,14 +48,15 @@ Use this layer directly if you're building your own UI/hold-to-talk logic.
 <mictext-mic model="onnx-community/whisper-base.en" slow-device="disable"></mictext-mic>
 ```
 
-Hold the button (pointerdown), speak, release (pointerup) — a `transcript`
-CustomEvent fires with `{ detail: { text } }`. Releasing before ~300ms
-cancels the recording without transcribing (accidental-tap guard). Errors
-(mic permission denied, transcription failure) fire a `voice-error` event
-with `{ detail: { message } }` instead of throwing; a recording that
-transcribes to nothing fires `voice-error` with message
-`No speech detected` — feedback, not a fault. While the model loads the
-button is disabled and titled "Loading model…".
+Hold the button (pointerdown), speak, release (pointerup). Releasing before
+~300ms cancels the recording without transcribing (accidental-tap guard).
+While the model loads the button is disabled and titled "Loading model…".
+
+| Event | Detail | Meaning |
+| --- | --- | --- |
+| `transcript` | `{ text }` | The hold produced speech; `text` is the transcription. |
+| `voice-error` | `{ message }` | Something failed (mic permission denied, transcription failure, crash-blocked device) — feedback, not a fault. |
+| `no-speech` | `{ reason: 'silence' \| 'artifact' }` | The hold carried no speech — either nothing cleared the noise floor (`silence`) or Whisper returned a known silence hallucination (`artifact`). Not an error; nothing was transcribed and nothing should be inserted. |
 
 The element's default slot replaces the button face (fallback: 🎤) — slot
 an image (give it `alt` text, it becomes the button's accessible name) or

@@ -1,4 +1,5 @@
 import { createTranscriber } from './transcriber.js'
+import { hasSpeech, isSilenceArtifact } from './silence.js'
 
 const CANCEL_MS = 300
 
@@ -179,9 +180,10 @@ class MicTextMic extends HTMLElement {
 
   // Live input waveform: rolling bars driven by mic RMS while recording, so
   // "listening" is visible at a glance (newest bar on the right, WhatsApp-style).
-  _startWave(stream) {
+  _startWave(stream, session) {
     // Cosmetic — any failure (no AudioContext, autoplay policy) means flat
-    // bars, never a broken recording.
+    // bars, never a broken recording. It also feeds the silence gate, which
+    // is why `metered` is only set once setup has actually succeeded.
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext
       const ctx = new Ctx()
@@ -193,6 +195,7 @@ class MicTextMic extends HTMLElement {
       this._waveEl.hidden = false
       const wave = { ctx, raf: 0, last: 0 }
       this._wave = wave
+      if (session) session.metered = true
       const tick = (t) => {
         analyser.getByteTimeDomainData(buf)
         let sum = 0
@@ -200,8 +203,12 @@ class MicTextMic extends HTMLElement {
           const d = (buf[i] - 128) / 128
           sum += d * d
         }
+        const rms = Math.sqrt(sum / buf.length)
+        // dB for the gate (floor-relative, so the +1e-9 guard against log10(0)
+        // is harmless), 0..1 for the bars.
+        if (session) session.levels.push(20 * Math.log10(rms + 1e-9))
         // ~3x boost: normal speech RMS is quiet; full bar ≈ loud voice.
-        const level = Math.min(1, Math.sqrt(sum / buf.length) * 3)
+        const level = Math.min(1, rms * 3)
         if (t - wave.last > 90) { // roll left every ~90ms, newest on the right
           wave.last = t
           for (let i = 0; i < bars.length - 1; i++) bars[i].style.height = bars[i + 1].style.height
@@ -241,7 +248,12 @@ class MicTextMic extends HTMLElement {
 
   _start() {
     if (!this._ready || this._session) return // still loading / already recording
-    const session = { released: false, stream: null, rec: null, chunks: [], downAt: Date.now() }
+    const session = {
+      released: false, stream: null, rec: null, chunks: [], downAt: Date.now(),
+      // levels: per-frame dB from the analyser; metered stays false if the
+      // AudioContext never came up, which makes the gate fail OPEN.
+      levels: [], metered: false,
+    }
     this._session = session
     this._runStart(session)
   }
@@ -265,7 +277,7 @@ class MicTextMic extends HTMLElement {
     session.rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) session.chunks.push(ev.data) }
     session.rec.start()
     this._btn.classList.add('recording')
-    this._startWave(stream)
+    this._startWave(stream, session)
   }
 
   async _stop() {
@@ -282,13 +294,21 @@ class MicTextMic extends HTMLElement {
     await stopped
     stream.getTracks().forEach((t) => t.stop())
     if (Date.now() - session.downAt < CANCEL_MS) return // cancel tap
+    // Held, but said nothing: the most common case is "still gathering my
+    // thoughts". Silent no-op — no transcription, nothing typed, no alert.
+    // Fails open when there is no level data at all (see _startWave).
+    if (session.metered && !hasSpeech(session.levels)) {
+      this._emitNoSpeech('silence')
+      return
+    }
     try {
       this._btn.disabled = true
       this._setBusy(true) // "words on the way" — same signal as model load
       guardStart() // inference is the crash-prone span on WebKit
       const { text } = await this._t.transcribeBlob(new Blob(session.chunks, { type: 'audio/webm' }))
-      if (text) this.dispatchEvent(new CustomEvent('transcript', { detail: { text }, bubbles: true }))
-      else this._emitError('No speech detected') // silence in = silence out, but say so
+      // Whisper on near-silence hallucinates rather than returning "".
+      if (isSilenceArtifact(text)) this._emitNoSpeech('artifact')
+      else this.dispatchEvent(new CustomEvent('transcript', { detail: { text }, bubbles: true }))
     } catch (e) {
       this._emitError(e.message)
     } finally {
@@ -317,6 +337,12 @@ class MicTextMic extends HTMLElement {
 
   _emitError(message) {
     this.dispatchEvent(new CustomEvent('voice-error', { detail: { message }, bubbles: true }))
+  }
+
+  // Not an error: the user held the key and said nothing. Hosts decide
+  // whether that deserves any UI at all — the bundled demo ignores it.
+  _emitNoSpeech(reason) {
+    this.dispatchEvent(new CustomEvent('no-speech', { detail: { reason }, bubbles: true }))
   }
 }
 

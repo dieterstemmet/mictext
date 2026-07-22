@@ -18,8 +18,16 @@ function fakeMedia() {
   globalThis.navigator.mediaDevices = {
     getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }),
   }
+  // Alternates quiet/loud bytes across frames so the analyser simulates real
+  // speech (varying RMS) by default — the silence gate needs frames that
+  // actually clear the floor, unlike a truly flat/constant buffer. Tests that
+  // want genuine silence (the silence-gate suite) override this locally.
+  let frame = 0
   globalThis.AudioContext = vi.fn(function () {
-    this.createAnalyser = () => ({ fftSize: 0, getByteTimeDomainData: vi.fn() })
+    this.createAnalyser = () => ({
+      fftSize: 0,
+      getByteTimeDomainData: (buf) => { frame += 1; buf.fill(frame % 2 === 0 ? 200 : 128) },
+    })
     this.createMediaStreamSource = () => ({ connect: vi.fn() })
     this.close = vi.fn()
   })
@@ -167,7 +175,7 @@ describe('<mictext-mic>', () => {
 
     it('the marker is SET during the risky inference span', async () => {
       let resolveTranscribe
-      transcriber.transcribeBlob.mockReturnValue(new Promise((res) => { resolveTranscribe = res }))
+      transcriber.transcribeBlob.mockReturnValueOnce(new Promise((res) => { resolveTranscribe = res }))
       const el = document.createElement('mictext-mic')
       document.body.appendChild(el)
       await new Promise((r) => setTimeout(r, 0))
@@ -204,19 +212,16 @@ describe('<mictext-mic>', () => {
     expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled()
   })
 
-  it('empty transcription emits voice-error "No speech detected"', async () => {
-    transcriber.transcribeBlob.mockResolvedValue({ text: '' })
+  it('empty transcription emits no-speech "artifact" (whisper artifact, not an error)', async () => {
+    transcriber.transcribeBlob.mockResolvedValueOnce({ text: '' })
     const el = document.createElement('mictext-mic')
     document.body.appendChild(el)
     await settled() // let load() settle -> button enabled
-    const err = new Promise((res) => el.addEventListener('voice-error', (e) => res(e.detail.message)))
+    const quiet = new Promise((res) => el.addEventListener('no-speech', (e) => res(e.detail.reason)))
     el.dispatchEvent(new Event('pointerdown'))
-    await settled() // getUserMedia + recorder start
-    const realNow = Date.now()
-    const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(realNow + 1000) // past the cancel window
+    await new Promise((r) => setTimeout(r, 350)) // past the cancel window, gives the analyser frames to gather
     el.dispatchEvent(new Event('pointerup'))
-    expect(await err).toBe('No speech detected')
-    dateSpy.mockRestore()
+    expect(await quiet).toBe('artifact')
   })
 
   it('slot with 🎤 fallback lets consumers provide a custom button face', async () => {
@@ -248,16 +253,15 @@ describe('<mictext-mic>', () => {
     const ring = el.shadowRoot.querySelector('.ring')
     expect(ring.hidden).toBe(true)
     el.dispatchEvent(new Event('pointerdown'))
-    await settled()
-    const realNow = Date.now()
-    const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(realNow + 1000)
+    // Real wait, not a Date.now() spoof: the silence gate needs actual
+    // analyser frames to accumulate, past the cancel window.
+    await new Promise((r) => setTimeout(r, 350))
     el.dispatchEvent(new Event('pointerup'))
     await settled()
     expect(ring.hidden).toBe(false) // transcribing
     resolveText({ text: 'hi' })
     await settled()
     expect(ring.hidden).toBe(true)
-    dateSpy.mockRestore()
   })
 
   describe('crash-probe false-positive fixes', () => {
@@ -295,21 +299,78 @@ describe('<mictext-mic>', () => {
     let resolveText
     transcriber.transcribeBlob.mockReturnValueOnce(new Promise((r) => { resolveText = r }))
     el.dispatchEvent(new Event('pointerdown'))
-    await settled()
-    const realNow = Date.now()
-    const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(realNow + 1000)
+    // Real wait, not a Date.now() spoof: the silence gate needs actual
+    // analyser frames to accumulate, past the cancel window.
+    await new Promise((r) => setTimeout(r, 350))
     el.dispatchEvent(new Event('pointerup'))
     await settled()
     expect(el.hasAttribute('busy')).toBe(true) // transcribing
     resolveText({ text: 'hi' })
     await settled()
     expect(el.hasAttribute('busy')).toBe(false)
-    dateSpy.mockRestore()
   })
 
   it('exposes the ring as a part for consumer styling', async () => {
     const el = document.createElement('mictext-mic')
     document.body.appendChild(el)
     expect(el.shadowRoot.querySelector('.ring').getAttribute('part')).toBe('ring')
+  })
+
+  describe('silence gate', () => {
+    // The default analyser now simulates speech (varying levels) so the
+    // other ~20 tests above get a normal transcript. Genuine silence needs
+    // its own override: a constant 128 (digital silence) into the buffer,
+    // so this recording produces a flat level series.
+    it('does not transcribe a hold that carried no speech', async () => {
+      globalThis.AudioContext = vi.fn(function () {
+        this.createAnalyser = () => ({ fftSize: 0, getByteTimeDomainData: (buf) => buf.fill(128) })
+        this.createMediaStreamSource = () => ({ connect: vi.fn() })
+        this.close = vi.fn()
+      })
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      const quiet = new Promise((res) => el.addEventListener('no-speech', (e) => res(e.detail.reason)))
+      el.dispatchEvent(new Event('pointerdown'))
+      await new Promise((r) => setTimeout(r, 350))
+      el.dispatchEvent(new Event('pointerup'))
+      expect(await quiet).toBe('silence')
+      expect(transcriber.transcribeBlob).not.toHaveBeenCalled()
+    })
+
+    it('emits no-speech (not transcript) when whisper returns a silence artifact', async () => {
+      transcriber.transcribeBlob.mockResolvedValueOnce({ text: '[BLANK_AUDIO]' })
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      el._session = null
+      const transcripts = []
+      el.addEventListener('transcript', (e) => transcripts.push(e.detail.text))
+      const quiet = new Promise((res) => el.addEventListener('no-speech', (e) => res(e.detail.reason)))
+      el.dispatchEvent(new Event('pointerdown'))
+      await new Promise((r) => setTimeout(r, 5))
+      // Force the gate open: pretend the analyser heard a voice.
+      el._session.levels = Array(60).fill(-60)
+      for (let i = 0; i < 20; i++) el._session.levels[i] = -30
+      await new Promise((r) => setTimeout(r, 350))
+      el.dispatchEvent(new Event('pointerup'))
+      expect(await quiet).toBe('artifact')
+      expect(transcripts).toEqual([])
+    })
+
+    it('fails OPEN when no level data exists (no AudioContext = never swallow speech)', async () => {
+      const RealCtx = globalThis.AudioContext
+      globalThis.AudioContext = undefined
+      globalThis.webkitAudioContext = undefined
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      const got = new Promise((res) => el.addEventListener('transcript', (e) => res(e.detail.text)))
+      el.dispatchEvent(new Event('pointerdown'))
+      await new Promise((r) => setTimeout(r, 350))
+      el.dispatchEvent(new Event('pointerup'))
+      expect(await got).toBe('hi')
+      globalThis.AudioContext = RealCtx
+    })
   })
 })
