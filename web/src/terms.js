@@ -70,8 +70,29 @@ function replaceable(t) {
   return w.length > 0 && w.length <= MAX_PAIR_WORDS && (t.heard.trim().length >= 4 || w.length > 1)
 }
 
+// Sentinel used internally between pass 1 and pass 2 of applyTerms below.
+// \x1F (ASCII Unit Separator) was chosen for CROSS-LANGUAGE safety, not just
+// JS safety: it is a control character that never appears in a transcript,
+// and it is not a \w character, so it can never satisfy a \b word-boundary
+// the way every heard pattern here is anchored — no pattern can chain onto
+// a sentinel. Do NOT substitute \x00 (NUL) here when porting: AutoHotkey
+// strings are null-terminated internally, so an embedded NUL silently
+// truncates the string in win/mictext.ahk. \x1F has no such landmine in
+// JavaScript, Lua, or AutoHotkey.
+const SENTINEL = '\x1F'
+
 export function applyTerms(text, terms) {
   let out = String(text == null ? '' : text)
+  // Strip any sentinel already present in the input before pass 1 runs.
+  // applyTerms is exported and general-purpose — its input is not
+  // guaranteed to have come from Whisper. Without this strip, pass 2 below
+  // would blindly index pairs[Number(i)] for ANY sentinel-shaped substring
+  // it finds, trusting it was written by pass 1: an out-of-range index
+  // crashes, an in-range index silently splices in an unrelated term's
+  // `said` text. Stripping the sentinel here means every sentinel pass 2
+  // ever sees was written by pass 1 moments ago — both failure modes become
+  // unreachable, not merely guarded. A porter must keep this strip.
+  out = out.split(SENTINEL).join('')
   // Longest first, so "da he can bay" wins over "bay".
   const pairs = terms.filter(replaceable).sort((a, b) => b.heard.length - a.heard.length)
 
@@ -83,12 +104,6 @@ export function applyTerms(text, terms) {
   // yielding "New Yorkshire City". So pass 1 swaps every match for a numbered
   // sentinel (not the real text), and pass 2 swaps sentinels for the real
   // replacement text. No pattern can ever match a sentinel, so nothing chains.
-  //
-  // Sentinel = \x00 (NUL) around the pair's index, e.g. "\x00\x00" ->
-  // "\x000\x00". \x00 is safe because (a) it is a control character that
-  // never appears in a transcript, and (b) it is not a \w character, so it
-  // can never satisfy a \b word-boundary the way every heard pattern here
-  // is anchored.
   pairs.forEach((t, i) => {
     // ponytail: \b is fine here — the heard side is dictated words. Phrases
     // that start or end in punctuation fall back to a bare match, which is
@@ -96,9 +111,9 @@ export function applyTerms(text, terms) {
     const body = escapeRe(t.heard.trim())
     const lead = /^\w/.test(t.heard.trim()) ? '\\b' : ''
     const tail = /\w$/.test(t.heard.trim()) ? '\\b' : ''
-    out = out.replace(new RegExp(`${lead}${body}${tail}`, 'gi'), () => `\x00${i}\x00`)
+    out = out.replace(new RegExp(`${lead}${body}${tail}`, 'gi'), () => `${SENTINEL}${i}${SENTINEL}`)
   })
-  out = out.replace(/\x00(\d+)\x00/g, (_, i) => pairs[Number(i)].said)
+  out = out.replace(new RegExp(`${SENTINEL}(\\d+)${SENTINEL}`, 'g'), (_, i) => pairs[Number(i)].said)
   return out
 }
 
@@ -107,8 +122,11 @@ export function learn(terms, heard, said) {
   const h = String(heard || '').trim()
   const s = String(said || '').trim()
   if (!h || !s || h.toLowerCase() === s.toLowerCase()) return terms.slice()
-  const rest = terms.filter((t) => t.heard.toLowerCase() !== h.toLowerCase())
-  const prev = terms.find((t) => t.heard.toLowerCase() === h.toLowerCase())
+  // Coerce heard to a string here, same reason as loadTerms(): the array
+  // passed in is caller-supplied, not guaranteed to have come through
+  // loadTerms(), and a raw non-string heard would otherwise throw here.
+  const rest = terms.filter((t) => String(t.heard).toLowerCase() !== h.toLowerCase())
+  const prev = terms.find((t) => String(t.heard).toLowerCase() === h.toLowerCase())
   // Newest last: promptFrom reads from the end, so a re-learned pair stays
   // at the front of the bias list.
   return [...rest, { heard: h, said: s, n: (prev ? prev.n : 0) + 1, at: new Date().toISOString() }]

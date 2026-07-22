@@ -85,6 +85,16 @@ describe('promptFrom', () => {
     const terms = [term('h', word)]
     expect(promptFrom(terms)).toBe(word)
   })
+
+  // Round 2, Finding 4: the oversized-word skip (Finding 1 above) is only
+  // pinned for a term whose ENTIRE said is one oversized word. This pins the
+  // skip path within a single term: an oversized word mid-said must be
+  // skipped without discarding the other, in-budget words of that SAME term.
+  it('skips an oversized word within a term but keeps that term\'s other in-budget words', () => {
+    const huge = 'x'.repeat(PROMPT_MAX_CHARS + 1)
+    const terms = [term('h', `foo ${huge} bar`)]
+    expect(promptFrom(terms)).toBe('foo, bar')
+  })
 })
 
 describe('applyTerms', () => {
@@ -146,6 +156,23 @@ describe('applyTerms', () => {
     const terms = [term('foo bar', '$& and $1')]
     expect(applyTerms('say foo bar now', terms)).toBe('say $& and $1 now')
   })
+
+  // Round 2, Finding 1: applyTerms is exported/general-purpose, so its input
+  // is not guaranteed to be free of the internal sentinel (\x1F) pass 1/2
+  // use to avoid cross-pair chaining. Pass 2 must not trust a sentinel it
+  // didn't write itself: an out-of-range index must not crash, and an
+  // in-range index must not splice in an unrelated term's `said` text.
+  it('does not crash on sentinel-shaped input with an out-of-range index', () => {
+    const terms = [term('new york', 'New York City'), term('foo bar', 'nope')]
+    expect(() => applyTerms('weird \x1F5\x1F text', terms)).not.toThrow()
+  })
+
+  it('does not let sentinel-shaped input splice in an unrelated term (in-range index)', () => {
+    const terms = [term('new york', 'New York City'), term('foo bar', 'nope')]
+    const result = applyTerms('weird \x1F0\x1F text', terms)
+    expect(result).not.toContain('New York City')
+    expect(result).toBe('weird 0 text')
+  })
 })
 
 describe('learn', () => {
@@ -194,5 +221,13 @@ describe('learn', () => {
   it('ignores empty input on either side', () => {
     expect(learn([], '', 'Oakenfield')).toEqual([])
     expect(learn([], 'oak en field', '   ')).toEqual([])
+  })
+
+  // Round 2, Finding 3: learn() is handed a caller-supplied array, not
+  // necessarily one that came through loadTerms()'s coercion. A raw
+  // non-string heard on an existing entry must not crash learn().
+  it('coerces a non-string heard on an existing entry instead of crashing', () => {
+    const terms = [{ heard: 123, said: 'abc', n: 1, at: '2026-01-01T00:00:00.000Z' }]
+    expect(() => learn(terms, 'foo', 'bar')).not.toThrow()
   })
 })
