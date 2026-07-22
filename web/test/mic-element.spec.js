@@ -494,4 +494,57 @@ describe('<mictext-mic>', () => {
       expect(el.hasAttribute('warming')).toBe(false)
     })
   })
+
+  describe('learned vocabulary', () => {
+    const record = async (el) => {
+      const got = new Promise((res) => el.addEventListener('transcript', (e) => res(e.detail.text)))
+      el.dispatchEvent(new Event('pointerdown'))
+      await new Promise((r) => setTimeout(r, 5))
+      el._session.levels = Array(60).fill(-60)
+      for (let i = 0; i < 20; i++) el._session.levels[i] = -30
+      await new Promise((r) => setTimeout(r, 350))
+      el.dispatchEvent(new Event('pointerup'))
+      return got
+    }
+
+    it('applies a learned replacement to the transcript', async () => {
+      localStorage.setItem('mictext-terms', JSON.stringify(
+        [{ heard: 'oak en field', said: 'Oakenfield', n: 1, at: '2026-07-22T00:00:00.000Z' }]))
+      transcriber.transcribeBlob.mockResolvedValueOnce({ text: 'surfing at oak en field' })
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      expect(await record(el)).toBe('surfing at Oakenfield')
+    })
+
+    it('remembers the delivered transcript so a host can offer a correction', async () => {
+      transcriber.transcribeBlob.mockResolvedValueOnce({ text: 'oak en field' })
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      await record(el)
+      expect(el.lastTranscript).toBe('oak en field')
+    })
+
+    it('learn() persists the pair and it applies next time', async () => {
+      transcriber.transcribeBlob.mockResolvedValueOnce({ text: 'oak en field' })
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      await record(el)
+      el.learn('Oakenfield')
+      expect(JSON.parse(localStorage.getItem('mictext-terms'))[0].said).toBe('Oakenfield')
+
+      transcriber.transcribeBlob.mockResolvedValueOnce({ text: 'oak en field again' })
+      expect(await record(el)).toBe('Oakenfield again')
+    })
+
+    it('learn() is a no-op when nothing has been transcribed yet', async () => {
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      el.learn('Oakenfield')
+      expect(localStorage.getItem('mictext-terms')).toBe(null)
+    })
+  })
 })

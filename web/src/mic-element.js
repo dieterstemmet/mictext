@@ -1,5 +1,6 @@
 import { createTranscriber } from './transcriber.js'
 import { hasSpeech, isSilenceArtifact, SPEECH_FRAMES } from './silence.js'
+import { loadTerms, saveTerms, applyTerms, learn as learnTerm } from './terms.js'
 
 const CANCEL_MS = 300
 
@@ -167,6 +168,7 @@ class MicTextMic extends HTMLElement {
     // Until it settles the button is disabled: recording against a transcriber
     // that may never answer reads as "broken", not "loading".
     this._ready = false
+    this.lastTranscript = null
     this._btn.disabled = true
     this._btn.title = 'Loading model…'
     this._setBusy(true)
@@ -343,8 +345,13 @@ class MicTextMic extends HTMLElement {
       guardStart() // inference is the crash-prone span on WebKit
       const { text } = await this._t.transcribeBlob(new Blob(session.chunks, { type: 'audio/webm' }))
       // Whisper on near-silence hallucinates rather than returning "".
-      if (isSilenceArtifact(text)) this._emitNoSpeech('artifact')
-      else this.dispatchEvent(new CustomEvent('transcript', { detail: { text }, bubbles: true }))
+      if (isSilenceArtifact(text)) { this._emitNoSpeech('artifact'); return }
+      // lastTranscript is what was DELIVERED, not the raw model output: you
+      // correct what you can see, and any residual error lives in the text
+      // after replacements, not before them.
+      const fixed = applyTerms(text, loadTerms())
+      this.lastTranscript = fixed
+      this.dispatchEvent(new CustomEvent('transcript', { detail: { text: fixed }, bubbles: true }))
     } catch (e) {
       this._emitError(e.message)
     } finally {
@@ -377,6 +384,15 @@ class MicTextMic extends HTMLElement {
   _setWarming(on) {
     this._btn.classList.toggle('warming', on)
     this.toggleAttribute('warming', on)
+  }
+
+  // Teach the mic what you actually said. `heard` defaults to the last
+  // delivered transcript, which is the normal case: the host shows
+  // lastTranscript in its own correction UI and passes back the fix.
+  // Stored locally, never sent.
+  learn(said, heard = this.lastTranscript) {
+    if (!heard || !said) return
+    saveTerms(learnTerm(loadTerms(), heard, said))
   }
 
   _emitError(message) {

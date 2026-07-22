@@ -88,6 +88,24 @@ object *before* the element is inserted into the DOM — it's read once in
 The element hides itself (`hidden = true`) if the device is degraded to
 `unsupported` (see policy table below).
 
+### Learning corrections
+
+The element keeps the raw transcript of the last recording and can be taught
+what you actually said. Corrections are stored in `localStorage` under
+`mictext-terms` and applied to every later transcript — they never leave the
+browser.
+
+```js
+mic.addEventListener('transcript', (e) => insert(e.detail.text))
+
+// Your own "that's wrong" UI:
+showCorrectionBox(mic.lastTranscript, (corrected) => mic.learn(corrected))
+```
+
+Corrections of six words or fewer are applied as whole-phrase, case-insensitive
+replacements. Longer ones are kept too, but only to bias decoding — rewriting a
+whole sentence from one past correction is more likely wrong than right.
+
 ## Crash probe & the live waveform
 
 WebKit can OOM-kill the whole tab during inference with no catchable error
