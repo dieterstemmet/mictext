@@ -303,9 +303,24 @@ class MicTextMic extends HTMLElement {
       return
     }
     session.stream = stream
-    session.rec = new MediaRecorder(stream)
-    session.rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) session.chunks.push(ev.data) }
-    session.rec.start()
+    try {
+      // `new MediaRecorder(stream)` throws NotSupportedError when no codec
+      // matches, and `.start()` can throw too. Uncaught, either leaves the
+      // mic open forever: the stream's tracks never stop, this._session
+      // stays non-null so _start() early-returns on every future press, and
+      // the warming halo pulses with no way out short of a page reload.
+      // Same failure shape as the getUserMedia catch above: stop the stream,
+      // clear the session, clear warming, emit the same voice-error path.
+      session.rec = new MediaRecorder(stream)
+      session.rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) session.chunks.push(ev.data) }
+      session.rec.start()
+    } catch {
+      stream.getTracks().forEach((t) => t.stop())
+      if (this._session === session) this._session = null
+      this._setWarming(false)
+      this._emitError('Microphone unavailable')
+      return
+    }
     // Capture has actually begun: warming -> recording.
     this._setWarming(false)
     this._btn.classList.add('recording')
@@ -333,6 +348,12 @@ class MicTextMic extends HTMLElement {
     // that never reaches SPEECH_FRAMES) — "not enough data" is the same
     // epistemic state as "no data", and only an unambiguous verdict of
     // silence gets to suppress a real transcription.
+    // hasSpeech()'s default `frames` assumes ~100ms/frame (desktop ffmpeg
+    // astats' rate). This analyser samples at ~60fps (~167ms/frame) and we
+    // pass no override, so SPEECH_FRAMES here spans ~1.67s vs. the desktop
+    // clients' ~1s — stricter (demands more sustained sound before it will
+    // call it speech). Errs toward the safe direction (never swallowing real
+    // speech), so left as a deliberate, on-the-record mismatch, not a bug.
     if (session.metered
         && session.levels.length >= SPEECH_FRAMES
         && !hasSpeech(session.levels)) {

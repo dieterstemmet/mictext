@@ -495,6 +495,54 @@ describe('<mictext-mic>', () => {
     })
   })
 
+  describe('recorder construction/start failure (mic must not be left open)', () => {
+    it('a throw from `new MediaRecorder()` stops tracks, clears warming/session, emits an error, and a later press still works', async () => {
+      globalThis.MediaRecorder = vi.fn(function () {
+        throw new DOMException('no supported mimeType', 'NotSupportedError')
+      })
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      const failed = new Promise((res) => el.addEventListener('voice-error', (e) => res(e.detail.message)))
+      el.dispatchEvent(new Event('pointerdown'))
+      await new Promise((r) => setTimeout(r, 0)) // getUserMedia resolves, then the throw
+      expect(await failed).toBeTruthy()
+      expect(track.stop).toHaveBeenCalled()
+      expect(el.hasAttribute('warming')).toBe(false)
+      expect(el.shadowRoot.querySelector('button').classList.contains('recording')).toBe(false)
+
+      // A later press must be able to start a fresh recording — the session
+      // must have been cleared, not left stuck non-null forever.
+      globalThis.MediaRecorder = vi.fn(function () {
+        this.start = vi.fn()
+        this.stop = vi.fn(() => {
+          this.ondataavailable({ data: new Blob([new Uint8Array([1])]) })
+          this.onstop()
+        })
+      })
+      const got = new Promise((res) => el.addEventListener('transcript', (e) => res(e.detail.text)))
+      el.dispatchEvent(new Event('pointerdown'))
+      await new Promise((r) => setTimeout(r, 350))
+      el.dispatchEvent(new Event('pointerup'))
+      expect(await got).toBe('hi')
+    })
+
+    it('a throw from `rec.start()` is handled the same way', async () => {
+      globalThis.MediaRecorder = vi.fn(function () {
+        this.start = vi.fn(() => { throw new Error('start failed') })
+      })
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      const failed = new Promise((res) => el.addEventListener('voice-error', (e) => res(e.detail.message)))
+      el.dispatchEvent(new Event('pointerdown'))
+      await new Promise((r) => setTimeout(r, 0))
+      expect(await failed).toBeTruthy()
+      expect(track.stop).toHaveBeenCalled()
+      expect(el.hasAttribute('warming')).toBe(false)
+    })
+  })
+
   describe('learned vocabulary', () => {
     const record = async (el) => {
       const got = new Promise((res) => el.addEventListener('transcript', (e) => res(e.detail.text)))
