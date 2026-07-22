@@ -98,9 +98,15 @@ function replaceable(t) {
 // Sentinel used internally between pass 1 and pass 2 of applyTerms below.
 // \x1F (ASCII Unit Separator) was chosen for CROSS-LANGUAGE safety, not just
 // JS safety: it is a control character that never appears in a transcript,
-// and it is not a \w character, so it can never satisfy a \b word-boundary
-// the way every heard pattern here is anchored — no pattern can chain onto
-// a sentinel. Do NOT substitute \x00 (NUL) here when porting: AutoHotkey
+// and it is not a \w character, so it can never satisfy a \b word-boundary —
+// the SENTINEL CHARACTER itself is unmatchable by any heard pattern here.
+// (The index digits sandwiched between the two sentinel characters ARE \w
+// and so ARE \b-anchorable in principle — that part of the old claim was
+// wrong. Reaching them needs an all-digit `heard` term AND more replaceable
+// terms than that digit string's value, e.g. a heard of "7" with 8+
+// replaceable terms loaded; unreachable in any realistic vocabulary, but
+// that's a numbers argument, not "no pattern can ever match a sentinel".) Do
+// NOT substitute \x00 (NUL) here when porting: AutoHotkey
 // strings are null-terminated internally, so an embedded NUL silently
 // truncates the string in win/mictext.ahk. \x1F has no such landmine in
 // JavaScript, Lua, or AutoHotkey.
@@ -170,6 +176,12 @@ export function applyTerms(text, terms) {
   return out
 }
 
+// ponytail: the list has no size cap, and applyTerms compiles one RegExp per
+// replaceable term on every transcription — fine at realistic vocabulary
+// sizes (tens to low hundreds of corrections). If it ever grows large enough
+// for that per-call compile cost (or prompt-window pressure in promptFrom)
+// to matter, cap it here — e.g. drop the least-recently-learned by `at`/`n`
+// once over a ceiling — rather than reaching for a smarter data structure.
 // Returns a NEW array. Persisting is the caller's job (saveTerms).
 export function learn(terms, heard, said) {
   const h = String(heard || '').trim()

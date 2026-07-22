@@ -13,7 +13,8 @@
   "files": ["src", "README.md"],
   "exports": {
     ".": "./src/index.js",
-    "./mic": "./src/mic-element.js"
+    "./mic": "./src/mic-element.js",
+    "./terms": "./src/terms.js"
   },
   "scripts": { "test": "vitest run" },
   "dependencies": { "@huggingface/transformers": "^3.5.0" },
