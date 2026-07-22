@@ -24,18 +24,25 @@ const words = (s) => String(s || '').trim().split(/\s+/).filter(Boolean)
 // applyTerms and learn all run their (caller-supplied, possibly malformed)
 // terms array through this first, so "well-formed term" is defined once.
 // Drops non-objects (null/undefined/primitives) and anything missing a
-// usable heard/said; coerces heard/said to strings and, if present, n to a
-// number (a hand-edited string n would otherwise string-concat in learn()'s
-// `prev.n + 1`). Plain loop, not a filter/map chain — must port as-is.
+// usable heard/said; coerces heard/said to strings and n to a number —
+// ALWAYS, even when the key is absent. Coercing it only when present is what
+// produced `undefined + 1` -> NaN in learn(); in Lua the same gap is a hard
+// runtime error on `prev.n + 1`, not a silent NaN.
+// Plain loop, not a filter/map chain — must port as-is.
 function normalizeTerms(arr) {
   const out = []
   if (!Array.isArray(arr)) return out
   for (const t of arr) {
     if (!t || typeof t !== 'object') continue // null, undefined, primitives
-    // JavaScript truthiness rejects 0 and ''; Lua has no falsy '' — see Lua port notes below.
-    if (!t.heard || !t.said) continue // said: 0 or '' is unusable, same as heard
-    // Lua equivalent: if not t.heard or not t.said then ... end
-    // (Lua truthy: only false and nil are falsy, so 0 and "" need explicit tests)
+    // said: 0 or '' is unusable as replacement text, same as heard.
+    // PORTABILITY (Lua): do NOT translate this literally. `not t.said` drops
+    // nothing in Lua — only false and nil are falsy there, so 0 and "" both
+    // survive and a said of 0 goes on to blank the matched text with "0".
+    // Lua needs the tests spelled out:
+    //   if t.heard == nil or t.heard == "" or t.heard == 0
+    //      or t.said == nil or t.said == "" or t.said == 0 then goto continue end
+    // AutoHotkey v2 agrees with JavaScript here, so checking only AHK misleads.
+    if (!t.heard || !t.said) continue
     // Lua: copy with `for k, v in pairs(t) do term[k] = v end`; AHK v2: `.Clone()`
     const term = { ...t, heard: String(t.heard), said: String(t.said) }
     term.n = Number(t.n) || 0
@@ -109,7 +116,10 @@ export function applyTerms(text, terms) {
   // crashes, an in-range index silently splices in an unrelated term's
   // `said` text. Stripping the sentinel here means every sentinel pass 2
   // ever sees was written by pass 1 moments ago — both failure modes become
-  // unreachable, not merely guarded. A porter must keep this strip.
+  // unreachable from the INPUT side, not merely guarded. (A term whose own
+  // `heard` contains a sentinel can still produce stray output; that needs a
+  // control character in your own vocabulary file to reach.)
+  // A porter must keep this strip.
   out = out.split(SENTINEL).join('')
   // Longest first, so "da he can bay" wins over "bay". Sort on the trimmed
   // heard length, not the padded length, to keep ordering consistent with
@@ -150,9 +160,12 @@ export function applyTerms(text, terms) {
   // is essential: a string form would reinterpret $& or $1 inside `said` as
   // regex backreferences instead of literal text. A porter to a language
   // without callback replacement must escape $ in the replacement text
-  // instead — e.g. AutoHotkey v2's RegExReplace accepts only a string
-  // replacement (no callback form), but $1/$& inside that string are still
-  // interpreted, so the same escaping is required there too.
+  // instead — AutoHotkey v2's RegExReplace accepts only a string replacement
+  // (no callback form), and $0-$9 / ${…} inside that string are still
+  // interpreted, so $ must be escaped as $$ there.
+  // Lua's string.gsub DOES take a function replacer — use it. If you reach
+  // for the string form instead, note that % is the special character there,
+  // so a `said` of "50%" raises "invalid use of '%' in replacement string".
   out = out.replace(new RegExp(`${SENTINEL}(\\d+)${SENTINEL}`, 'g'), (_, i) => pairs[Number(i)].said)
   return out
 }
@@ -161,8 +174,8 @@ export function applyTerms(text, terms) {
 export function learn(terms, heard, said) {
   const h = String(heard || '').trim()
   const s = String(said || '').trim()
-  if (!h || !s || h.toLowerCase() === s.toLowerCase()) return normalizeTerms(terms)
   const list = normalizeTerms(terms)
+  if (!h || !s || h.toLowerCase() === s.toLowerCase()) return list
   const rest = list.filter((t) => t.heard.toLowerCase() !== h.toLowerCase())
   const prev = list.find((t) => t.heard.toLowerCase() === h.toLowerCase())
   // Newest last: promptFrom reads from the end, so a re-learned pair stays
