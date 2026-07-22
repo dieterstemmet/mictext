@@ -284,4 +284,47 @@ describe('learn', () => {
     const t = learn(terms, 'oak en field', 'Oakenfield')
     expect(t[0].n).toBe(6)
   })
+
+  // Round 5, Finding 1: an entry with no `n` key at all passes through
+  // normalizeTerms untouched, so `(prev ? prev.n : 0) + 1` evaluates
+  // `undefined + 1` = NaN. learn() must coerce n unconditionally.
+  it('produces numeric n even when the existing entry has no n key', () => {
+    const terms = [{ heard: 'oak en field', said: 'Oakenfield', at: 'x' }]
+    const t = learn(terms, 'oak en field', 'Oakenfield')
+    expect(typeof t[0].n).toBe('number')
+    expect(t[0].n).toBe(1)
+  })
+
+  // Round 5, Finding 2: learn() returns early on the no-op path before
+  // calling normalizeTerms(), so a null or malformed input is handed straight
+  // back. If the caller saves this unfiltered, it re-persists junk. learn()
+  // must normalize before the early return.
+  it('normalizes a no-op input instead of handing back junk', () => {
+    expect(learn(null, 'a', 'a')).toEqual([])
+  })
+
+  it('normalizes a malformed array before the no-op return', () => {
+    const result = learn([null, 3, { heard: 1, said: 2 }], 'hello', 'hello')
+    // null and 3 are filtered; { heard: 1, said: 2 } survives (both truthy)
+    // and is normalized to { heard: '1', said: '2', n: 0 }
+    expect(result.length).toBe(1)
+    expect(result[0].heard).toBe('1')
+    expect(result[0].said).toBe('2')
+  })
+})
+
+describe('applyTerms (round 5 Finding 4)', () => {
+  // Round 5, Finding 4: longest-match-first sorts on untrimmed heard length,
+  // but patterns are built from trimmed heard. A whitespace-padded entry
+  // breaks the order: a "          bayside          " (28 chars) sorts before
+  // "bayside bay" (11 chars) even though the pattern for "bayside" is only
+  // 8 chars and should match last.
+  it('sorts longest-match-first on the trimmed length, not the padded length', () => {
+    const terms = [
+      { heard: '          bayside          ', said: 'BAYSIDE', n: 1, at: 'x' },
+      { heard: 'bayside bay', said: 'Bayside Bay', n: 1, at: 'x' },
+    ]
+    const result = applyTerms('at bayside bay', terms)
+    expect(result).toBe('at Bayside Bay')
+  })
 })

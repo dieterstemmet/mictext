@@ -32,9 +32,13 @@ function normalizeTerms(arr) {
   if (!Array.isArray(arr)) return out
   for (const t of arr) {
     if (!t || typeof t !== 'object') continue // null, undefined, primitives
+    // JavaScript truthiness rejects 0 and ''; Lua has no falsy '' — see Lua port notes below.
     if (!t.heard || !t.said) continue // said: 0 or '' is unusable, same as heard
+    // Lua equivalent: if not t.heard or not t.said then ... end
+    // (Lua truthy: only false and nil are falsy, so 0 and "" need explicit tests)
+    // Lua: copy with `for k, v in pairs(t) do term[k] = v end`; AHK v2: `.Clone()`
     const term = { ...t, heard: String(t.heard), said: String(t.said) }
-    if ('n' in t) term.n = Number(t.n) || 0
+    term.n = Number(t.n) || 0
     out.push(term)
   }
   return out
@@ -107,8 +111,10 @@ export function applyTerms(text, terms) {
   // ever sees was written by pass 1 moments ago — both failure modes become
   // unreachable, not merely guarded. A porter must keep this strip.
   out = out.split(SENTINEL).join('')
-  // Longest first, so "da he can bay" wins over "bay".
-  const pairs = normalizeTerms(terms).filter(replaceable).sort((a, b) => b.heard.length - a.heard.length)
+  // Longest first, so "da he can bay" wins over "bay". Sort on the trimmed
+  // heard length, not the padded length, to keep ordering consistent with
+  // the pattern-building logic below.
+  const pairs = normalizeTerms(terms).filter(replaceable).sort((a, b) => b.heard.trim().length - a.heard.trim().length)
 
   // Two passes, not one. Applying replacements longest-first stops a short
   // pattern from pre-empting a longer match in the ORIGINAL text (that part
@@ -134,9 +140,10 @@ export function applyTerms(text, terms) {
     // folding only touches letters, so escape-then-fold leaves those %'s
     // alone — fold-then-escape would instead re-escape the [ and ] the
     // folding just introduced, corrupting the pattern.
-    const body = escapeRe(t.heard.trim())
-    const lead = /^\w/.test(t.heard.trim()) ? '\\b' : ''
-    const tail = /\w$/.test(t.heard.trim()) ? '\\b' : ''
+    const heard = t.heard.trim()
+    const body = escapeRe(heard)
+    const lead = /^\w/.test(heard) ? '\\b' : ''
+    const tail = /\w$/.test(heard) ? '\\b' : ''
     out = out.replace(new RegExp(`${lead}${body}${tail}`, 'gi'), () => `${SENTINEL}${i}${SENTINEL}`)
   })
   // Pass 2: swap sentinels for the real replacement text. The function form
@@ -154,7 +161,7 @@ export function applyTerms(text, terms) {
 export function learn(terms, heard, said) {
   const h = String(heard || '').trim()
   const s = String(said || '').trim()
-  if (!h || !s || h.toLowerCase() === s.toLowerCase()) return terms.slice()
+  if (!h || !s || h.toLowerCase() === s.toLowerCase()) return normalizeTerms(terms)
   const list = normalizeTerms(terms)
   const rest = list.filter((t) => t.heard.toLowerCase() !== h.toLowerCase())
   const prev = list.find((t) => t.heard.toLowerCase() === h.toLowerCase())
