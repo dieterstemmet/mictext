@@ -28,6 +28,17 @@ describe('storage', () => {
     localStorage.setItem('mictext-terms', '{"heard":"x"}')
     expect(loadTerms()).toEqual([])
   })
+
+  // Finding 4: the shape filter is truthiness-only, so a hand-edited or
+  // cross-platform-pasted file with non-string heard/said survives the
+  // filter and would crash downstream in replaceable()/applyTerms() at
+  // `t.heard.trim()`. Coerce to strings at load time instead.
+  it('coerces non-string heard/said instead of letting them crash a consumer', () => {
+    localStorage.setItem('mictext-terms', JSON.stringify([{ heard: 123, said: 'abc' }]))
+    const terms = loadTerms()
+    expect(terms).toEqual([{ heard: '123', said: 'abc' }])
+    expect(() => applyTerms('123 test', terms)).not.toThrow()
+  })
 })
 
 describe('promptFrom', () => {
@@ -56,6 +67,23 @@ describe('promptFrom', () => {
   it('keeps the NEWEST terms when it has to cut (whisper truncates from the front)', () => {
     const terms = Array.from({ length: 100 }, (_, i) => term(`h${i}`, `Word${i}`))
     expect(promptFrom(terms).startsWith('Word99')).toBe(true)
+  })
+
+  // Finding 1: one oversized (unbroken) word must not zero out the whole
+  // prompt. The oversized word itself is skipped; everything else that
+  // fits should still make it in.
+  it('skips a single oversized word instead of discarding every other term', () => {
+    const huge = 'x'.repeat(PROMPT_MAX_CHARS + 1)
+    const terms = [term('a', 'Ordinary'), term('b', huge)]
+    expect(promptFrom(terms)).toBe('Ordinary')
+  })
+
+  // Finding 5: pin the exact-boundary case (0 + 200 > 200 is false, so a
+  // first word of exactly PROMPT_MAX_CHARS chars is included whole).
+  it('includes a first word of exactly PROMPT_MAX_CHARS characters', () => {
+    const word = 'w'.repeat(PROMPT_MAX_CHARS)
+    const terms = [term('h', word)]
+    expect(promptFrom(terms)).toBe(word)
   })
 })
 
@@ -99,6 +127,24 @@ describe('applyTerms', () => {
 
   it('leaves text untouched when there are no terms', () => {
     expect(applyTerms('hello there', [])).toBe('hello there')
+  })
+
+  // Finding 2: a shorter pair must not re-match text a longer pair just
+  // produced. Longest-first ordering correctly protects the ORIGINAL text
+  // (see "applies the longest match first" above) but a naive sequential
+  // apply lets "york" re-match the "York" inside the replacement text that
+  // "new york" -> "New York City" just inserted.
+  it('does not let a shorter pair re-match text a longer pair just inserted', () => {
+    const terms = [term('new york', 'New York City'), term('york', 'Yorkshire')]
+    expect(applyTerms('I love new york', terms)).toBe('I love New York City')
+  })
+
+  // Finding 3: regression guard for the function-replacer form. A string
+  // replacement would reinterpret $& / $1 inside `said`; the function form
+  // must not.
+  it('inserts $ sequences in the replacement text literally', () => {
+    const terms = [term('foo bar', '$& and $1')]
+    expect(applyTerms('say foo bar now', terms)).toBe('say $& and $1 now')
   })
 })
 
