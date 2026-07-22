@@ -93,8 +93,13 @@ export function applyTerms(text, terms) {
   // ever sees was written by pass 1 moments ago — both failure modes become
   // unreachable, not merely guarded. A porter must keep this strip.
   out = out.split(SENTINEL).join('')
+  // Coerce heard/said to strings, same reason as loadTerms(): the array
+  // passed in is caller-supplied, not guaranteed to have come through
+  // loadTerms(), and a raw non-string heard would otherwise crash downstream
+  // in replaceable() or in the regex-building loop below.
+  const coercedTerms = terms.map(t => ({ ...t, heard: String(t.heard || ''), said: String(t.said || '') }))
   // Longest first, so "da he can bay" wins over "bay".
-  const pairs = terms.filter(replaceable).sort((a, b) => b.heard.length - a.heard.length)
+  const pairs = coercedTerms.filter(replaceable).sort((a, b) => b.heard.length - a.heard.length)
 
   // Two passes, not one. Applying replacements longest-first stops a short
   // pattern from pre-empting a longer match in the ORIGINAL text (that part
@@ -113,6 +118,11 @@ export function applyTerms(text, terms) {
     const tail = /\w$/.test(t.heard.trim()) ? '\\b' : ''
     out = out.replace(new RegExp(`${lead}${body}${tail}`, 'gi'), () => `${SENTINEL}${i}${SENTINEL}`)
   })
+  // Pass 2: swap sentinels for the real replacement text. The function form
+  // is essential: a string form would reinterpret $& or $1 inside `said` as
+  // regex backreferences instead of literal text. A porter to a language
+  // without callback replacement must escape $ in the replacement text
+  // instead (e.g. AutoHotkey v2's RegExReplace accepts only literal strings).
   out = out.replace(new RegExp(`${SENTINEL}(\\d+)${SENTINEL}`, 'g'), (_, i) => pairs[Number(i)].said)
   return out
 }

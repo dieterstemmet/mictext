@@ -173,6 +173,14 @@ describe('applyTerms', () => {
     expect(result).not.toContain('New York City')
     expect(result).toBe('weird 0 text')
   })
+
+  // Round 3, Finding 1: applyTerms is exported/general-purpose, so its input
+  // is not guaranteed to be free of non-string heard/said. A caller-supplied
+  // array may have non-string values (e.g. a bare number) that would crash
+  // downstream in replaceable() or in the regex-building loop without coercion.
+  it('coerces non-string heard when it would otherwise crash', () => {
+    expect(() => applyTerms('12345 test', [{ heard: 12345, said: 'abc', n: 1, at: 'x' }])).not.toThrow()
+  })
 })
 
 describe('learn', () => {
