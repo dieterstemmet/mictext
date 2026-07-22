@@ -17,10 +17,13 @@ export const SPEECH_FRAMES = 10
 export function hasSpeech(levels, { db = SPEECH_DB, frames = SPEECH_FRAMES } = {}) {
   if (!levels || levels.length < frames) return false
   let floor = Infinity
-  for (const v of levels) if (v < floor) floor = v
+  for (const v of levels) {
+    // ffmpeg astats emits -inf for RMS_level on digitally silent frames; ignore non-finite
+    if (Number.isFinite(v) && v < floor) floor = v
+  }
   let n = 0
   for (const v of levels) {
-    if (v - floor > db) n += 1
+    if (Number.isFinite(v) && v - floor > db) n += 1
     if (n >= frames) return true
   }
   return false

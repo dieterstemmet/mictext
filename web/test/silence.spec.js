@@ -49,6 +49,19 @@ describe('hasSpeech', () => {
     expect(hasSpeech(levels, { frames: 5 })).toBe(true)
     expect(hasSpeech(levels, { frames: 20 })).toBe(false)
   })
+
+  it('ignores non-finite frames (astats emits -inf on digital silence)', () => {
+    const levels = flat(50, -60)
+    levels[25] = -Infinity
+    expect(hasSpeech(levels)).toBe(false)
+  })
+
+  it('honours custom db threshold override', () => {
+    const levels = flat(50, -60)
+    for (let i = 10; i < 20; i++) levels[i] = -60 + 12 + 1 // strictly > 12 dB above floor
+    expect(hasSpeech(levels, { db: 12 })).toBe(true)
+    expect(hasSpeech(levels, { db: 13 })).toBe(false)
+  })
 })
 
 describe('isSilenceArtifact', () => {
