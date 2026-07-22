@@ -1,5 +1,5 @@
 import { createTranscriber } from './transcriber.js'
-import { hasSpeech, isSilenceArtifact } from './silence.js'
+import { hasSpeech, isSilenceArtifact, SPEECH_FRAMES } from './silence.js'
 
 const CANCEL_MS = 300
 
@@ -181,12 +181,20 @@ class MicTextMic extends HTMLElement {
   // Live input waveform: rolling bars driven by mic RMS while recording, so
   // "listening" is visible at a glance (newest bar on the right, WhatsApp-style).
   _startWave(stream, session) {
-    // Cosmetic — any failure (no AudioContext, autoplay policy) means flat
-    // bars, never a broken recording. It also feeds the silence gate, which
-    // is why `metered` is only set once setup has actually succeeded.
+    // Cosmetic — construction failure (no AudioContext) means flat bars,
+    // never a broken recording. Autoplay-policy suspension is NOT such a
+    // failure to swallow silently: it's exactly what fed real speech into the
+    // gate as measured silence before, which is why `metered` is proven live,
+    // per-frame, from an actually-running context (see tick) rather than
+    // assumed the moment the graph is built.
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext
       const ctx = new Ctx()
+      // Off-gesture (post-await) construction starts suspended on WebKit;
+      // give it a chance to come up. No-op if already running; a rejection
+      // (or a mock with no resume at all) is cosmetic-path noise, not ours to
+      // surface — this call must never be able to break recording.
+      try { ctx.resume().catch(() => {}) } catch { /* unsupported, ignore */ }
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 512
       ctx.createMediaStreamSource(stream).connect(analyser)
@@ -195,7 +203,6 @@ class MicTextMic extends HTMLElement {
       this._waveEl.hidden = false
       const wave = { ctx, raf: 0, last: 0 }
       this._wave = wave
-      if (session) session.metered = true
       const tick = (t) => {
         analyser.getByteTimeDomainData(buf)
         let sum = 0
@@ -204,9 +211,18 @@ class MicTextMic extends HTMLElement {
           sum += d * d
         }
         const rms = Math.sqrt(sum / buf.length)
-        // dB for the gate (floor-relative, so the +1e-9 guard against log10(0)
-        // is harmless), 0..1 for the bars.
-        if (session) session.levels.push(20 * Math.log10(rms + 1e-9))
+        // A suspended context returns a constant fake buffer forever — reads
+        // identically to true silence — so a frame only proves metering once
+        // it's actually sampled off a running context. _stop() can't check
+        // this itself: by the time the gate runs, _stopWave() has already
+        // closed the context, so the flag has to be earned here, live.
+        if (ctx.state !== 'suspended') session.metered = true
+        // dB for the gate, floor-relative; clamp rms to a plausible ~-100dB
+        // floor instead of true digital-silence's ~-180dB — unclamped, that
+        // floor reads as 100+dB of "signal" above it for ordinary ambient
+        // noise, which only happens to be harmless because it errs open, not
+        // because it's a meaningful measurement.
+        session.levels.push(20 * Math.log10(Math.max(rms, 1e-5)))
         // ~3x boost: normal speech RMS is quiet; full bar ≈ loud voice.
         const level = Math.min(1, rms * 3)
         if (t - wave.last > 90) { // roll left every ~90ms, newest on the right
@@ -250,8 +266,9 @@ class MicTextMic extends HTMLElement {
     if (!this._ready || this._session) return // still loading / already recording
     const session = {
       released: false, stream: null, rec: null, chunks: [], downAt: Date.now(),
-      // levels: per-frame dB from the analyser; metered stays false if the
-      // AudioContext never came up, which makes the gate fail OPEN.
+      // levels: per-frame dB from the analyser; metered stays false unless a
+      // frame is actually sampled off a running context, which makes the
+      // gate fail OPEN (no AudioContext, autoplay-suspended, or too short).
       levels: [], metered: false,
     }
     this._session = session
@@ -296,8 +313,14 @@ class MicTextMic extends HTMLElement {
     if (Date.now() - session.downAt < CANCEL_MS) return // cancel tap
     // Held, but said nothing: the most common case is "still gathering my
     // thoughts". Silent no-op — no transcription, nothing typed, no alert.
-    // Fails open when there is no level data at all (see _startWave).
-    if (session.metered && !hasSpeech(session.levels)) {
+    // Fails open with no level data at all (see _startWave) AND with too
+    // little of it to judge (a short hold, or a throttled/low-power device
+    // that never reaches SPEECH_FRAMES) — "not enough data" is the same
+    // epistemic state as "no data", and only an unambiguous verdict of
+    // silence gets to suppress a real transcription.
+    if (session.metered
+        && session.levels.length >= SPEECH_FRAMES
+        && !hasSpeech(session.levels)) {
       this._emitNoSpeech('silence')
       return
     }

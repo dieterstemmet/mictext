@@ -343,15 +343,10 @@ describe('<mictext-mic>', () => {
       const el = document.createElement('mictext-mic')
       document.body.appendChild(el)
       await settled()
-      el._session = null
       const transcripts = []
       el.addEventListener('transcript', (e) => transcripts.push(e.detail.text))
       const quiet = new Promise((res) => el.addEventListener('no-speech', (e) => res(e.detail.reason)))
       el.dispatchEvent(new Event('pointerdown'))
-      await new Promise((r) => setTimeout(r, 5))
-      // Force the gate open: pretend the analyser heard a voice.
-      el._session.levels = Array(60).fill(-60)
-      for (let i = 0; i < 20; i++) el._session.levels[i] = -30
       await new Promise((r) => setTimeout(r, 350))
       el.dispatchEvent(new Event('pointerup'))
       expect(await quiet).toBe('artifact')
@@ -371,6 +366,86 @@ describe('<mictext-mic>', () => {
       el.dispatchEvent(new Event('pointerup'))
       expect(await got).toBe('hi')
       globalThis.AudioContext = RealCtx
+    })
+
+    it('fails OPEN on a suspended AudioContext (WebKit autoplay policy off-gesture)', async () => {
+      // A context built after an `await` (getUserMedia) starts life suspended
+      // on WebKit. A suspended analyser reads back a constant flat buffer
+      // forever — indistinguishable from true silence — so metering must be
+      // proven by an actual running-context sample, never assumed at construction.
+      globalThis.AudioContext = vi.fn(function () {
+        this.state = 'suspended'
+        this.resume = vi.fn().mockResolvedValue()
+        this.createAnalyser = () => ({ fftSize: 0, getByteTimeDomainData: (buf) => buf.fill(128) })
+        this.createMediaStreamSource = () => ({ connect: vi.fn() })
+        this.close = vi.fn()
+      })
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      const got = new Promise((res) => el.addEventListener('transcript', (e) => res(e.detail.text)))
+      el.dispatchEvent(new Event('pointerdown'))
+      await new Promise((r) => setTimeout(r, 350))
+      el.dispatchEvent(new Event('pointerup'))
+      expect(await got).toBe('hi')
+    })
+
+    it('fails OPEN when a hold ends with too few frames to judge (short hold / throttled device)', async () => {
+      // A slow/throttled device (or a very short hold) can end with fewer
+      // frames than hasSpeech() needs to render any verdict at all. "Not
+      // enough data to judge" is the same epistemic state as "no data" and
+      // must transcribe, not silently read as measured silence.
+      let frames = 0
+      const realRAF = globalThis.requestAnimationFrame
+      globalThis.requestAnimationFrame = (cb) => {
+        frames += 1
+        if (frames > 3) return 0 // simulate a device that stalls after 3 frames
+        return realRAF(cb)
+      }
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      const got = new Promise((res) => el.addEventListener('transcript', (e) => res(e.detail.text)))
+      el.dispatchEvent(new Event('pointerdown'))
+      await new Promise((r) => setTimeout(r, 350))
+      el.dispatchEvent(new Event('pointerup'))
+      expect(await got).toBe('hi')
+      globalThis.requestAnimationFrame = realRAF
+    })
+
+    it('discriminates a realistic mic signal (quiet floor, modest speech peaks) from silence', async () => {
+      // The default fakeMedia() double swings between ~-5dB and a ~-180dB
+      // digital-silence floor — a 175dB ratio against a 12dB threshold, so
+      // any implementation that pushes SOME monotonic function of RMS passes
+      // it. Real mic noise floors sit far higher than digital silence, so
+      // this double keeps both floor and peaks in a plausible range.
+      let frame = 0
+      globalThis.AudioContext = vi.fn(function () {
+        this.createAnalyser = () => ({
+          fftSize: 0,
+          getByteTimeDomainData: (buf) => {
+            frame += 1
+            if (frame % 2 === 0) {
+              // "peak" frame: ~-36dB, modest speech-level swing
+              for (let i = 0; i < buf.length; i++) buf[i] = i % 2 === 0 ? 126 : 130
+            } else {
+              // "floor" frame: ~-55dB, quiet room noise, not digital silence
+              buf.fill(128)
+              for (let i = 0; i < buf.length; i += 20) buf[i] = 129
+            }
+          },
+        })
+        this.createMediaStreamSource = () => ({ connect: vi.fn() })
+        this.close = vi.fn()
+      })
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      const got = new Promise((res) => el.addEventListener('transcript', (e) => res(e.detail.text)))
+      el.dispatchEvent(new Event('pointerdown'))
+      await new Promise((r) => setTimeout(r, 350))
+      el.dispatchEvent(new Event('pointerup'))
+      expect(await got).toBe('hi')
     })
   })
 })
