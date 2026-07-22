@@ -448,4 +448,50 @@ describe('<mictext-mic>', () => {
       expect(await got).toBe('hi')
     })
   })
+
+  describe('warming state', () => {
+    it('is warming from press until the recorder starts, then recording', async () => {
+      let openMic
+      globalThis.navigator.mediaDevices.getUserMedia =
+        vi.fn(() => new Promise((res) => { openMic = () => res({ getTracks: () => [track] }) }))
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      const btn = el.shadowRoot.querySelector('button')
+
+      el.dispatchEvent(new Event('pointerdown'))
+      await new Promise((r) => setTimeout(r, 0))
+      expect(el.hasAttribute('warming')).toBe(true)
+      expect(btn.classList.contains('recording')).toBe(false)
+      expect(el.shadowRoot.querySelector('.wave').hidden).toBe(true)
+
+      openMic()
+      await new Promise((r) => setTimeout(r, 0))
+      expect(el.hasAttribute('warming')).toBe(false)
+      expect(btn.classList.contains('recording')).toBe(true)
+    })
+
+    it('clears warming when released before the mic ever opens', async () => {
+      globalThis.navigator.mediaDevices.getUserMedia = vi.fn(() => new Promise(() => {}))
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      el.dispatchEvent(new Event('pointerdown'))
+      await new Promise((r) => setTimeout(r, 0))
+      expect(el.hasAttribute('warming')).toBe(true)
+      el.dispatchEvent(new Event('pointerup'))
+      expect(el.hasAttribute('warming')).toBe(false)
+    })
+
+    it('clears warming when the microphone is unavailable', async () => {
+      globalThis.navigator.mediaDevices.getUserMedia = vi.fn().mockRejectedValue(new Error('denied'))
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      const failed = new Promise((res) => el.addEventListener('voice-error', (e) => res(e.detail.message)))
+      el.dispatchEvent(new Event('pointerdown'))
+      expect(await failed).toBe('Microphone unavailable')
+      expect(el.hasAttribute('warming')).toBe(false)
+    })
+  })
 })

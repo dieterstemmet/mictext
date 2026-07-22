@@ -68,6 +68,17 @@ carries a `busy` attribute — style your own loading treatment off
 `mictext-mic[busy]` (the demo animates its slotted logo this way) and hide
 the built-in ring with `mictext-mic::part(ring) { display: none }`.
 
+`<mictext-mic>` also reflects a **`warming`** attribute from the moment the
+button is pressed until the capture device is actually open and recording.
+It is deliberately distinct from `busy` (model load / transcription): during
+`warming` **nothing is being captured yet**, so never show a "listening" or
+"recording" treatment for it.
+
+```css
+mictext-mic[warming] .my-logo { opacity: .5; }
+mictext-mic[busy]    .my-logo { animation: spin 1s linear infinite; }
+```
+
 Attributes: `model`, `slow-device`, `fallback-url`, `fallback-api-key`. For
 anything not expressible as an attribute (e.g. `slowThresholdMs`,
 `onProgress`), set the `transcriberOptions` property to a full options

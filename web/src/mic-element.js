@@ -106,6 +106,14 @@ class MicTextMic extends HTMLElement {
                               pointer-events: none; }
         /* a slotted face hides a background swap — use a halo ring instead */
         button.recording { box-shadow: 0 0 0 3px #e33; }
+        /* warming = the device is opening, we are NOT capturing yet. Paper
+           halo, not the recording red — the two must never look alike. */
+        button.warming { box-shadow: 0 0 0 3px #F2EFE7;
+                         animation: mictext-warm 1.1s ease-in-out infinite; }
+        @keyframes mictext-warm { 50% { box-shadow: 0 0 0 3px #cfcabd; } }
+        @media (prefers-reduced-motion: reduce) {
+          button.warming { animation: none; }
+        }
         button:disabled { opacity: .5; cursor: default; }
         /* loading ring: the logo's grille palette (paper + caret red) orbiting
            the button while the model loads or a clip transcribes */
@@ -251,6 +259,7 @@ class MicTextMic extends HTMLElement {
   disconnectedCallback() {
     this._disconnected = true
     this._stopWave()
+    if (this._btn) this._setWarming(false)
     if (this._t) this._t.dispose()
 
     const session = this._session
@@ -272,6 +281,7 @@ class MicTextMic extends HTMLElement {
       levels: [], metered: false,
     }
     this._session = session
+    this._setWarming(true) // the device is opening — say so, don't imply capture
     this._runStart(session)
   }
 
@@ -281,6 +291,7 @@ class MicTextMic extends HTMLElement {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch {
       if (this._session === session) this._session = null
+      this._setWarming(false)
       this._emitError('Microphone unavailable')
       return
     }
@@ -293,6 +304,8 @@ class MicTextMic extends HTMLElement {
     session.rec = new MediaRecorder(stream)
     session.rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) session.chunks.push(ev.data) }
     session.rec.start()
+    // Capture has actually begun: warming -> recording.
+    this._setWarming(false)
     this._btn.classList.add('recording')
     this._startWave(stream, session)
   }
@@ -302,7 +315,7 @@ class MicTextMic extends HTMLElement {
     if (!session) return
     this._session = null
     session.released = true
-    if (!session.rec) return // getUserMedia still pending; _runStart will tear it down
+    if (!session.rec) { this._setWarming(false); return } // still warming; _runStart tears the stream down
     const { rec, stream } = session
     this._btn.classList.remove('recording')
     this._stopWave()
@@ -356,6 +369,14 @@ class MicTextMic extends HTMLElement {
   _setBusy(on) {
     this._ring.hidden = !on
     this.toggleAttribute('busy', on)
+  }
+
+  // Warming = the capture device is opening; audio is NOT being captured yet.
+  // Deliberately separate from `busy` (model load / inference): a consumer's
+  // loading treatment must not fire for two unrelated states.
+  _setWarming(on) {
+    this._btn.classList.toggle('warming', on)
+    this.toggleAttribute('warming', on)
   }
 
   _emitError(message) {
