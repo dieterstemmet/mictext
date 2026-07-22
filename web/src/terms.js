@@ -139,7 +139,9 @@ export function applyTerms(text, terms) {
   // match the "York" inside the "new york" -> "New York City" replacement,
   // yielding "New Yorkshire City". So pass 1 swaps every match for a numbered
   // sentinel (not the real text), and pass 2 swaps sentinels for the real
-  // replacement text. No pattern can ever match a sentinel, so nothing chains.
+  // replacement text, so nothing chains. (See the SENTINEL comment above for
+  // exactly how strong that guarantee is — the character is unmatchable, the
+  // index digits between are unreachable rather than unmatchable.)
   pairs.forEach((t, i) => {
     // ponytail: \b is fine here — the heard side is dictated words. Phrases
     // that start or end in punctuation fall back to a bare match, which is
