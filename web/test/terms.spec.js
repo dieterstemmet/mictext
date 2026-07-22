@@ -95,6 +95,15 @@ describe('promptFrom', () => {
     const terms = [term('h', `foo ${huge} bar`)]
     expect(promptFrom(terms)).toBe('foo, bar')
   })
+
+  // Round 4, Finding 1: a null/undefined ELEMENT in the array (not a
+  // malformed field) must not crash promptFrom. Well-formed entries
+  // alongside it still contribute their words.
+  it('ignores null and undefined elements instead of throwing', () => {
+    const terms = [null, term('a', 'Alpha'), undefined, term('b', 'Bravo')]
+    expect(() => promptFrom(terms)).not.toThrow()
+    expect(promptFrom(terms)).toBe('Bravo, Alpha')
+  })
 })
 
 describe('applyTerms', () => {
@@ -181,6 +190,25 @@ describe('applyTerms', () => {
   it('coerces non-string heard when it would otherwise crash', () => {
     expect(() => applyTerms('12345 test', [{ heard: 12345, said: 'abc', n: 1, at: 'x' }])).not.toThrow()
   })
+
+  // Round 4, Finding 1: a null/undefined ELEMENT in the array must not
+  // crash applyTerms; the well-formed entry alongside it still replaces.
+  it('ignores null and undefined elements in the terms array instead of throwing', () => {
+    const terms = [null, term('oak en field', 'Oakenfield'), undefined]
+    expect(() => applyTerms('we went to oak en field', terms)).not.toThrow()
+    expect(applyTerms('we went to oak en field', terms)).toBe('we went to Oakenfield')
+  })
+
+  // Round 4, Finding 1 (related bug): applyTerms' own coercion used to write
+  // `String(t.said || '')`, unlike loadTerms' bare `String(t.said)` — a
+  // falsy-but-real `said: 0` silently became '' there, blanking the
+  // replacement instead of being treated consistently as unusable input.
+  // The consolidated helper drops it like loadTerms always would, so the
+  // heard text is left alone rather than corrupted.
+  it('treats a said:0 entry as unusable rather than blanking the replacement', () => {
+    const terms = [{ heard: 'mati', said: 0, n: 1, at: 'x' }]
+    expect(applyTerms('we went to mati today', terms)).toBe('we went to mati today')
+  })
 })
 
 describe('learn', () => {
@@ -237,5 +265,23 @@ describe('learn', () => {
   it('coerces a non-string heard on an existing entry instead of crashing', () => {
     const terms = [{ heard: 123, said: 'abc', n: 1, at: '2026-01-01T00:00:00.000Z' }]
     expect(() => learn(terms, 'foo', 'bar')).not.toThrow()
+  })
+
+  // Round 4, Finding 1: a null/undefined ELEMENT in the existing terms array
+  // must not crash learn(); the well-formed entry alongside it is preserved.
+  it('ignores null and undefined elements in the existing terms array instead of throwing', () => {
+    const terms = [null, term('a', 'Alpha'), undefined]
+    expect(() => learn(terms, 'b', 'Bravo')).not.toThrow()
+    const t = learn(terms, 'b', 'Bravo')
+    expect(t.map((x) => x.heard)).toEqual(['a', 'b'])
+  })
+
+  // Round 4, Finding 1 (related bug): `(prev ? prev.n : 0) + 1` assumed
+  // prev.n was numeric; a string n from a hand-edited file used to
+  // string-concatenate ("5" + 1 -> "51") instead of incrementing.
+  it('coerces a numeric-string n instead of string-concatenating on re-learn', () => {
+    const terms = [{ heard: 'oak en field', said: 'Oakenfield', n: '5', at: 'x' }]
+    const t = learn(terms, 'oak en field', 'Oakenfield')
+    expect(t[0].n).toBe(6)
   })
 })

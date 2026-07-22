@@ -20,16 +20,29 @@ export const MAX_PAIR_WORDS = 6
 
 const words = (s) => String(s || '').trim().split(/\s+/).filter(Boolean)
 
+// The one normalization boundary in this file: loadTerms, promptFrom,
+// applyTerms and learn all run their (caller-supplied, possibly malformed)
+// terms array through this first, so "well-formed term" is defined once.
+// Drops non-objects (null/undefined/primitives) and anything missing a
+// usable heard/said; coerces heard/said to strings and, if present, n to a
+// number (a hand-edited string n would otherwise string-concat in learn()'s
+// `prev.n + 1`). Plain loop, not a filter/map chain — must port as-is.
+function normalizeTerms(arr) {
+  const out = []
+  if (!Array.isArray(arr)) return out
+  for (const t of arr) {
+    if (!t || typeof t !== 'object') continue // null, undefined, primitives
+    if (!t.heard || !t.said) continue // said: 0 or '' is unusable, same as heard
+    const term = { ...t, heard: String(t.heard), said: String(t.said) }
+    if ('n' in t) term.n = Number(t.n) || 0
+    out.push(term)
+  }
+  return out
+}
+
 export function loadTerms() {
   try {
-    const v = JSON.parse(localStorage.getItem(KEY))
-    // Coerce heard/said to strings here, not just filter on truthiness: a
-    // hand-edited or cross-platform-pasted file can carry non-string values
-    // (e.g. a bare number) that would otherwise survive the filter and
-    // crash downstream in replaceable()/applyTerms() at `t.heard.trim()`.
-    return Array.isArray(v)
-      ? v.filter((t) => t && t.heard && t.said).map((t) => ({ ...t, heard: String(t.heard), said: String(t.said) }))
-      : []
+    return normalizeTerms(JSON.parse(localStorage.getItem(KEY)))
   } catch { return [] } // corrupt or unavailable storage = no vocabulary, never a crash
 }
 
@@ -39,11 +52,12 @@ export function saveTerms(terms) {
 
 // Newest first, de-duplicated, capped on a word boundary.
 export function promptFrom(terms) {
+  const list = normalizeTerms(terms)
   const seen = new Set()
   const out = []
   let len = 0
-  for (let i = terms.length - 1; i >= 0; i--) {
-    for (const w of words(terms[i].said)) {
+  for (let i = list.length - 1; i >= 0; i--) {
+    for (const w of words(list[i].said)) {
       const k = w.toLowerCase()
       if (seen.has(k)) continue
       seen.add(k)
@@ -93,13 +107,8 @@ export function applyTerms(text, terms) {
   // ever sees was written by pass 1 moments ago — both failure modes become
   // unreachable, not merely guarded. A porter must keep this strip.
   out = out.split(SENTINEL).join('')
-  // Coerce heard/said to strings, same reason as loadTerms(): the array
-  // passed in is caller-supplied, not guaranteed to have come through
-  // loadTerms(), and a raw non-string heard would otherwise crash downstream
-  // in replaceable() or in the regex-building loop below.
-  const coercedTerms = terms.map(t => ({ ...t, heard: String(t.heard || ''), said: String(t.said || '') }))
   // Longest first, so "da he can bay" wins over "bay".
-  const pairs = coercedTerms.filter(replaceable).sort((a, b) => b.heard.length - a.heard.length)
+  const pairs = normalizeTerms(terms).filter(replaceable).sort((a, b) => b.heard.length - a.heard.length)
 
   // Two passes, not one. Applying replacements longest-first stops a short
   // pattern from pre-empting a longer match in the ORIGINAL text (that part
@@ -113,6 +122,18 @@ export function applyTerms(text, terms) {
     // ponytail: \b is fine here — the heard side is dictated words. Phrases
     // that start or end in punctuation fall back to a bare match, which is
     // what you want for "c++ (plus)".
+    //
+    // PORTABILITY (Lua): the \b anchors, the 'i' flag, and \-escaping below
+    // are PCRE/JS syntax. They port cleanly to AutoHotkey v2 (real PCRE —
+    // see the function-replacer comment below) but NOT to Lua: Lua patterns
+    // have no \b, no case-insensitive flag, and escape with % rather than \.
+    // A Lua port needs %f[%w] / %f[%W] frontier patterns for word
+    // boundaries, and, since there's no i flag, must fold each letter into a
+    // two-case class itself (a -> [aA]). Escape metacharacters BEFORE
+    // case-folding, not after: escaping introduces literal % characters and
+    // folding only touches letters, so escape-then-fold leaves those %'s
+    // alone — fold-then-escape would instead re-escape the [ and ] the
+    // folding just introduced, corrupting the pattern.
     const body = escapeRe(t.heard.trim())
     const lead = /^\w/.test(t.heard.trim()) ? '\\b' : ''
     const tail = /\w$/.test(t.heard.trim()) ? '\\b' : ''
@@ -122,7 +143,9 @@ export function applyTerms(text, terms) {
   // is essential: a string form would reinterpret $& or $1 inside `said` as
   // regex backreferences instead of literal text. A porter to a language
   // without callback replacement must escape $ in the replacement text
-  // instead (e.g. AutoHotkey v2's RegExReplace accepts only literal strings).
+  // instead — e.g. AutoHotkey v2's RegExReplace accepts only a string
+  // replacement (no callback form), but $1/$& inside that string are still
+  // interpreted, so the same escaping is required there too.
   out = out.replace(new RegExp(`${SENTINEL}(\\d+)${SENTINEL}`, 'g'), (_, i) => pairs[Number(i)].said)
   return out
 }
@@ -132,11 +155,9 @@ export function learn(terms, heard, said) {
   const h = String(heard || '').trim()
   const s = String(said || '').trim()
   if (!h || !s || h.toLowerCase() === s.toLowerCase()) return terms.slice()
-  // Coerce heard to a string here, same reason as loadTerms(): the array
-  // passed in is caller-supplied, not guaranteed to have come through
-  // loadTerms(), and a raw non-string heard would otherwise throw here.
-  const rest = terms.filter((t) => String(t.heard).toLowerCase() !== h.toLowerCase())
-  const prev = terms.find((t) => String(t.heard).toLowerCase() === h.toLowerCase())
+  const list = normalizeTerms(terms)
+  const rest = list.filter((t) => t.heard.toLowerCase() !== h.toLowerCase())
+  const prev = list.find((t) => t.heard.toLowerCase() === h.toLowerCase())
   // Newest last: promptFrom reads from the end, so a re-learned pair stays
   // at the front of the bias list.
   return [...rest, { heard: h, said: s, n: (prev ? prev.n : 0) + 1, at: new Date().toISOString() }]
