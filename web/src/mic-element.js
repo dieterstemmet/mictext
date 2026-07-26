@@ -1,5 +1,5 @@
 import { createTranscriber } from './transcriber.js'
-import { hasSpeech, isSilenceArtifact, SPEECH_FRAMES } from './silence.js'
+import { hasSpeech, isSilenceArtifact, framesForRate } from './silence.js'
 import { loadTerms, saveTerms, applyTerms, learn as learnTerm } from './terms.js'
 
 const CANCEL_MS = 300
@@ -222,17 +222,24 @@ class MicTextMic extends HTMLElement {
         }
         const rms = Math.sqrt(sum / buf.length)
         // A suspended context returns a constant fake buffer forever — reads
-        // identically to true silence — so a frame only proves metering once
-        // it's actually sampled off a running context. _stop() can't check
-        // this itself: by the time the gate runs, _stopWave() has already
-        // closed the context, so the flag has to be earned here, live.
-        if (ctx.state !== 'suspended') session.metered = true
-        // dB for the gate, floor-relative; clamp rms to a plausible ~-100dB
-        // floor instead of true digital-silence's ~-180dB — unclamped, that
-        // floor reads as 100+dB of "signal" above it for ordinary ambient
-        // noise, which only happens to be harmless because it errs open, not
-        // because it's a meaningful measurement.
-        session.levels.push(20 * Math.log10(Math.max(rms, 1e-5)))
+        // identically to true silence. So we neither meter NOR record a frame
+        // until it's sampled off a running context: a suspended frame pushed
+        // to levels (rms≈0 → the -100dB clamp below) would sink the gate's
+        // noise floor far under real ambient, making ordinary noise read as
+        // speech and defeating the gate on WebKit (which starts the context
+        // suspended off-gesture). _stop() can't re-check state itself — by the
+        // time the gate runs, _stopWave() has closed the context — so the
+        // flag, the cadence timestamps, and the level are all earned here,
+        // live, from a running context only.
+        if (ctx.state !== 'suspended') {
+          session.metered = true
+          if (session.firstFrameT == null) session.firstFrameT = t
+          session.lastFrameT = t
+          // dB for the gate, floor-relative; clamp rms up to a plausible
+          // ~-100dB floor (vs digital silence's ~-180dB) so a lone silent
+          // frame from a running context can't sink the floor either.
+          session.levels.push(20 * Math.log10(Math.max(rms, 1e-5)))
+        }
         // ~3x boost: normal speech RMS is quiet; full bar ≈ loud voice.
         const level = Math.min(1, rms * 3)
         if (t - wave.last > 90) { // roll left every ~90ms, newest on the right
@@ -280,7 +287,9 @@ class MicTextMic extends HTMLElement {
       // levels: per-frame dB from the analyser; metered stays false unless a
       // frame is actually sampled off a running context, which makes the
       // gate fail OPEN (no AudioContext, autoplay-suspended, or too short).
-      levels: [], metered: false,
+      // firstFrameT/lastFrameT: rAF timestamps of the first and last RECORDED
+      // (running-context) frames, so the gate can measure the real cadence.
+      levels: [], metered: false, firstFrameT: null, lastFrameT: 0,
     }
     this._session = session
     this._setWarming(true) // the device is opening — say so, don't imply capture
@@ -344,19 +353,21 @@ class MicTextMic extends HTMLElement {
     // Held, but said nothing: the most common case is "still gathering my
     // thoughts". Silent no-op — no transcription, nothing typed, no alert.
     // Fails open with no level data at all (see _startWave) AND with too
-    // little of it to judge (a short hold, or a throttled/low-power device
-    // that never reaches SPEECH_FRAMES) — "not enough data" is the same
-    // epistemic state as "no data", and only an unambiguous verdict of
-    // silence gets to suppress a real transcription.
-    // hasSpeech()'s default `frames` assumes ~100ms/frame (desktop ffmpeg
-    // astats' rate). This analyser samples at ~60fps (~167ms/frame) and we
-    // pass no override, so SPEECH_FRAMES here spans ~1.67s vs. the desktop
-    // clients' ~1s — stricter (demands more sustained sound before it will
-    // call it speech). Errs toward the safe direction (never swallowing real
-    // speech), so left as a deliberate, on-the-record mismatch, not a bug.
+    // little of it to judge — "not enough data" is the same epistemic state
+    // as "no data", and only an unambiguous verdict of silence suppresses.
+    //
+    // The frame count is rate-derived, not fixed: the analyser is rAF-driven
+    // (~60fps, throttling to 30fps on weak/background tabs), so a fixed count
+    // is a moving duration that would drop a real word shorter than it. Use
+    // THIS recording's measured cadence — the span between its first and last
+    // recorded frames — so the threshold is a fixed ~SPEECH_SPAN_MS of speech
+    // whatever the rate. (< 2 frames or a zero span → assume 60fps.)
+    const span = (session.lastFrameT || 0) - (session.firstFrameT || 0)
+    const frameMs = session.levels.length > 1 && span > 0 ? span / (session.levels.length - 1) : 1000 / 60
+    const need = framesForRate(frameMs)
     if (session.metered
-        && session.levels.length >= SPEECH_FRAMES
-        && !hasSpeech(session.levels)) {
+        && session.levels.length >= need
+        && !hasSpeech(session.levels, { frames: need })) {
       this._emitNoSpeech('silence')
       return
     }

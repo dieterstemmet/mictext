@@ -18,6 +18,23 @@
 export const SPEECH_DB = 12
 export const SPEECH_FRAMES = 10
 
+// Speech is a DURATION, not a frame count. Frame rate varies — the desktop
+// clients read ffmpeg astats at a fixed ~10ms/frame, but the web analyser is
+// rAF-driven and throttles from ~60fps to 30fps (or lower) on background tabs
+// and weak devices — so a fixed frame count is a moving duration: 10 frames is
+// 100ms at the desktop rate but 167ms at 60fps and 333ms at 30fps, each
+// silently dropping a real word shorter than that. framesForRate() converts a
+// measured per-frame interval into the frame count that spans SPEECH_SPAN_MS,
+// so the threshold is the same amount of speech regardless of rate. Floored at
+// 3 (a fluke can't trip it) and capped at SPEECH_FRAMES (never stricter than
+// the desktop default). Desktop's fixed ~10ms/frame yields SPEECH_FRAMES here,
+// so the ports can keep passing the constant directly.
+export const SPEECH_SPAN_MS = 100
+export function framesForRate(frameMs) {
+  if (!Number.isFinite(frameMs) || frameMs <= 0) frameMs = 1000 / 60
+  return Math.min(SPEECH_FRAMES, Math.max(3, Math.round(SPEECH_SPAN_MS / frameMs)))
+}
+
 // levels: raw per-frame loudness in dB, any consistent scale. Callers pass
 // their own `frames` when they sample at a different rate — desktop ffmpeg
 // astats emits ~100 lines/s, the web analyser runs at ~60fps.

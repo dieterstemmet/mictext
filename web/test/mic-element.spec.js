@@ -447,6 +447,95 @@ describe('<mictext-mic>', () => {
       el.dispatchEvent(new Event('pointerup'))
       expect(await got).toBe('hi')
     })
+
+    it('suspended-then-running frames do not poison the floor (silence still suppressed on WebKit)', async () => {
+      // The bug: a context that starts suspended (WebKit, off-gesture) pushed
+      // digital-silence frames (rms≈0 → the -100dB clamp) BEFORE it resumed,
+      // then real ambient frames after. With those -100 frames in the series
+      // the floor sank to -100, so ordinary ambient noise read 45dB "above
+      // floor" and counted as speech — a genuinely silent hold transcribed,
+      // defeating the energy gate on the codebase's first-class platform.
+      // A frame is now only recorded off a running context, so the floor
+      // reflects real audio and this silent hold is suppressed.
+      let frame = 0
+      globalThis.AudioContext = vi.fn(function () {
+        const ctx = this
+        ctx.state = 'suspended'
+        ctx.resume = vi.fn().mockResolvedValue()
+        ctx.createAnalyser = () => ({
+          fftSize: 0,
+          getByteTimeDomainData: (buf) => {
+            frame += 1
+            if (frame <= 5) { ctx.state = 'suspended'; buf.fill(128) } // pre-resume: digital silence
+            else {
+              ctx.state = 'running' // resumed: quiet room noise, NOT speech
+              buf.fill(128)
+              for (let i = 0; i < buf.length; i += 20) buf[i] = 129
+            }
+          },
+        })
+        ctx.createMediaStreamSource = () => ({ connect: vi.fn() })
+        ctx.close = vi.fn()
+      })
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      const quiet = new Promise((res) => el.addEventListener('no-speech', (e) => res(e.detail.reason)))
+      el.dispatchEvent(new Event('pointerdown'))
+      await new Promise((r) => setTimeout(r, 350))
+      el.dispatchEvent(new Event('pointerup'))
+      expect(await quiet).toBe('silence')
+      expect(transcriber.transcribeBlob).not.toHaveBeenCalled()
+    })
+
+    it('a brief word in a longer hold is NOT dropped (rate-derived frame count)', async () => {
+      // The bug: the gate needed a fixed 10 above-floor frames, ~167ms at
+      // 60fps, so a shorter real word inside a longer hold fell under the bar
+      // and was suppressed — the fail-CLOSED direction the spec calls worse
+      // than transcribing silence. The count is now derived from the measured
+      // cadence (~6 frames = ~100ms at 60fps), so a ~100ms burst transcribes.
+      // Drive rAF at a real 60fps cadence (happy-dom otherwise fires it with
+      // ~0ms deltas, which reads as absurdly high fps and caps the need at
+      // 10 — the very fixed count this fix removes). Fixed loud window (frames
+      // 3-8 = 6 loud frames) so the burst is provably 6, < the old 10.
+      let t = 0, count = 0
+      const realRAF = globalThis.requestAnimationFrame
+      globalThis.requestAnimationFrame = (cb) => {
+        count += 1
+        if (count > 20) return 0
+        const now = (t += 1000 / 60) // 60fps timestamps: ~16.7ms/frame
+        return realRAF(() => cb(now))
+      }
+      let frame = 0
+      globalThis.AudioContext = vi.fn(function () {
+        this.createAnalyser = () => ({
+          fftSize: 0,
+          getByteTimeDomainData: (buf) => {
+            frame += 1
+            if (frame >= 3 && frame <= 8) {
+              for (let i = 0; i < buf.length; i++) buf[i] = i % 2 === 0 ? 126 : 130 // ~-36dB speech burst
+            } else {
+              buf.fill(128) // quiet room floor, not digital silence
+              for (let i = 0; i < buf.length; i += 20) buf[i] = 129
+            }
+          },
+        })
+        this.createMediaStreamSource = () => ({ connect: vi.fn() })
+        this.close = vi.fn()
+      })
+      const el = document.createElement('mictext-mic')
+      document.body.appendChild(el)
+      await settled()
+      const got = new Promise((res) => el.addEventListener('transcript', (e) => res(e.detail.text)))
+      el.dispatchEvent(new Event('pointerdown'))
+      await new Promise((r) => setTimeout(r, 350))
+      el.dispatchEvent(new Event('pointerup'))
+      try {
+        expect(await got).toBe('hi')
+      } finally {
+        globalThis.requestAnimationFrame = realRAF
+      }
+    })
   })
 
   describe('warming state', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hasSpeech, isSilenceArtifact, SPEECH_DB, SPEECH_FRAMES } from '../src/silence.js'
+import { hasSpeech, isSilenceArtifact, framesForRate, SPEECH_DB, SPEECH_FRAMES, SPEECH_SPAN_MS } from '../src/silence.js'
 
 // Levels are raw per-frame loudness in dB. Absolute values are meaningless
 // across machines (mic gain shifts them 20+ dB), so every case here is built
@@ -85,5 +85,33 @@ describe('isSilenceArtifact', () => {
     expect(isSilenceArtifact('can you hear me')).toBe(false)
     expect(isSilenceArtifact('thank you for the ride')).toBe(false)
     expect(isSilenceArtifact('you know what I mean')).toBe(false)
+  })
+})
+
+describe('framesForRate', () => {
+  it('targets the same ~SPEECH_SPAN_MS of speech regardless of frame rate', () => {
+    // At any rate, frames * frameMs should be ~SPEECH_SPAN_MS (within the
+    // floor/cap clamps). 60fps ≈ 16.7ms/frame, 30fps ≈ 33ms/frame.
+    expect(framesForRate(1000 / 60)).toBe(6) // 6 * 16.7 ≈ 100ms
+    expect(framesForRate(1000 / 30)).toBe(3) // 3 * 33 ≈ 100ms
+  })
+
+  it("yields the desktop default at the desktop's fixed ~10ms/frame", () => {
+    // astats emits ~100 lines/s, so a straight port keeps passing SPEECH_FRAMES.
+    expect(framesForRate(SPEECH_SPAN_MS / SPEECH_FRAMES)).toBe(SPEECH_FRAMES)
+  })
+
+  it('is capped at SPEECH_FRAMES so it is never stricter than desktop', () => {
+    expect(framesForRate(1)).toBe(SPEECH_FRAMES) // 1000fps would want 100 frames
+  })
+
+  it('is floored at 3 so a fluke on a slow device cannot trip it', () => {
+    expect(framesForRate(1000)).toBe(3) // 1fps → 0.1 frames rounds below the floor
+  })
+
+  it('assumes 60fps for an unusable interval (no data to measure cadence)', () => {
+    expect(framesForRate(0)).toBe(6)
+    expect(framesForRate(NaN)).toBe(6)
+    expect(framesForRate(-5)).toBe(6)
   })
 })
