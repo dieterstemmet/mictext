@@ -33,6 +33,14 @@ self-hosted fallback server covers devices too slow to run the model.
 | [`win/`](win/) | Windows dictation client: hold Right Ctrl (AutoHotkey v2 + ffmpeg + whisper.cpp) |
 | [`server/`](server/) | Optional self-hosted fallback (FastAPI + faster-whisper) for the web library's explicit `slowDevice: 'server'` opt-in |
 
+## Dictation behaviour
+
+All three clients share the same behaviour, tuned per platform:
+
+- **Warming vs. recording.** Opening the capture device takes up to a second on the first press of a session. Each client shows that as a distinct warming state — a dim pill and a `🎙…` icon on macOS, a grey pill and "warming up" tooltip on Windows, a `warming` attribute on `<mictext-mic>` — and only switches to the recording look once audio is genuinely being captured. Wait for it and no first words are lost.
+- **Silence is silence.** A hold that carried no speech types nothing and shows nothing. Whisper's silence hallucinations (`[BLANK_AUDIO]`, `Thank you.`) are dropped too.
+- **It learns your words.** Correct a transcript (⌥⇧F on macOS, Alt+Shift+F on Windows, `mic.learn()` on the web) and the pair is remembered in `~/.mictext/terms.json` — fed back to Whisper as decoding context and applied as a replacement. Local file, local only; the desktop clients share one file format.
+
 ## Zero-upload guarantee
 
 With the default configuration, no code path in this repo POSTs your audio
