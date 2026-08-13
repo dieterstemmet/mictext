@@ -1,4 +1,6 @@
 import { createTranscriber } from './transcriber.js'
+import { hasSpeech, isSilenceArtifact, framesForRate } from './silence.js'
+import { loadTerms, saveTerms, applyTerms, learn as learnTerm } from './terms.js'
 
 const CANCEL_MS = 300
 
@@ -105,6 +107,14 @@ class MicTextMic extends HTMLElement {
                               pointer-events: none; }
         /* a slotted face hides a background swap — use a halo ring instead */
         button.recording { box-shadow: 0 0 0 3px #e33; }
+        /* warming = the device is opening, we are NOT capturing yet. Paper
+           halo, not the recording red — the two must never look alike. */
+        button.warming { box-shadow: 0 0 0 3px #F2EFE7;
+                         animation: mictext-warm 1.1s ease-in-out infinite; }
+        @keyframes mictext-warm { 50% { box-shadow: 0 0 0 3px #cfcabd; } }
+        @media (prefers-reduced-motion: reduce) {
+          button.warming { animation: none; }
+        }
         button:disabled { opacity: .5; cursor: default; }
         /* loading ring: the logo's grille palette (paper + caret red) orbiting
            the button while the model loads or a clip transcribes */
@@ -158,6 +168,7 @@ class MicTextMic extends HTMLElement {
     // Until it settles the button is disabled: recording against a transcriber
     // that may never answer reads as "broken", not "loading".
     this._ready = false
+    this.lastTranscript = null
     this._btn.disabled = true
     this._btn.title = 'Loading model…'
     this._setBusy(true)
@@ -179,12 +190,21 @@ class MicTextMic extends HTMLElement {
 
   // Live input waveform: rolling bars driven by mic RMS while recording, so
   // "listening" is visible at a glance (newest bar on the right, WhatsApp-style).
-  _startWave(stream) {
-    // Cosmetic — any failure (no AudioContext, autoplay policy) means flat
-    // bars, never a broken recording.
+  _startWave(stream, session) {
+    // Cosmetic — construction failure (no AudioContext) means flat bars,
+    // never a broken recording. Autoplay-policy suspension is NOT such a
+    // failure to swallow silently: it's exactly what fed real speech into the
+    // gate as measured silence before, which is why `metered` is proven live,
+    // per-frame, from an actually-running context (see tick) rather than
+    // assumed the moment the graph is built.
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext
       const ctx = new Ctx()
+      // Off-gesture (post-await) construction starts suspended on WebKit;
+      // give it a chance to come up. No-op if already running; a rejection
+      // (or a mock with no resume at all) is cosmetic-path noise, not ours to
+      // surface — this call must never be able to break recording.
+      try { ctx.resume().catch(() => {}) } catch { /* unsupported, ignore */ }
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 512
       ctx.createMediaStreamSource(stream).connect(analyser)
@@ -200,8 +220,28 @@ class MicTextMic extends HTMLElement {
           const d = (buf[i] - 128) / 128
           sum += d * d
         }
+        const rms = Math.sqrt(sum / buf.length)
+        // A suspended context returns a constant fake buffer forever — reads
+        // identically to true silence. So we neither meter NOR record a frame
+        // until it's sampled off a running context: a suspended frame pushed
+        // to levels (rms≈0 → the -100dB clamp below) would sink the gate's
+        // noise floor far under real ambient, making ordinary noise read as
+        // speech and defeating the gate on WebKit (which starts the context
+        // suspended off-gesture). _stop() can't re-check state itself — by the
+        // time the gate runs, _stopWave() has closed the context — so the
+        // flag, the cadence timestamps, and the level are all earned here,
+        // live, from a running context only.
+        if (ctx.state !== 'suspended') {
+          session.metered = true
+          if (session.firstFrameT == null) session.firstFrameT = t
+          session.lastFrameT = t
+          // dB for the gate, floor-relative; clamp rms up to a plausible
+          // ~-100dB floor (vs digital silence's ~-180dB) so a lone silent
+          // frame from a running context can't sink the floor either.
+          session.levels.push(20 * Math.log10(Math.max(rms, 1e-5)))
+        }
         // ~3x boost: normal speech RMS is quiet; full bar ≈ loud voice.
-        const level = Math.min(1, Math.sqrt(sum / buf.length) * 3)
+        const level = Math.min(1, rms * 3)
         if (t - wave.last > 90) { // roll left every ~90ms, newest on the right
           wave.last = t
           for (let i = 0; i < bars.length - 1; i++) bars[i].style.height = bars[i + 1].style.height
@@ -228,6 +268,7 @@ class MicTextMic extends HTMLElement {
   disconnectedCallback() {
     this._disconnected = true
     this._stopWave()
+    if (this._btn) this._setWarming(false)
     if (this._t) this._t.dispose()
 
     const session = this._session
@@ -241,8 +282,17 @@ class MicTextMic extends HTMLElement {
 
   _start() {
     if (!this._ready || this._session) return // still loading / already recording
-    const session = { released: false, stream: null, rec: null, chunks: [], downAt: Date.now() }
+    const session = {
+      released: false, stream: null, rec: null, chunks: [], downAt: Date.now(),
+      // levels: per-frame dB from the analyser; metered stays false unless a
+      // frame is actually sampled off a running context, which makes the
+      // gate fail OPEN (no AudioContext, autoplay-suspended, or too short).
+      // firstFrameT/lastFrameT: rAF timestamps of the first and last RECORDED
+      // (running-context) frames, so the gate can measure the real cadence.
+      levels: [], metered: false, firstFrameT: null, lastFrameT: 0,
+    }
     this._session = session
+    this._setWarming(true) // the device is opening — say so, don't imply capture
     this._runStart(session)
   }
 
@@ -252,6 +302,7 @@ class MicTextMic extends HTMLElement {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch {
       if (this._session === session) this._session = null
+      this._setWarming(false)
       this._emitError('Microphone unavailable')
       return
     }
@@ -261,11 +312,28 @@ class MicTextMic extends HTMLElement {
       return
     }
     session.stream = stream
-    session.rec = new MediaRecorder(stream)
-    session.rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) session.chunks.push(ev.data) }
-    session.rec.start()
+    try {
+      // `new MediaRecorder(stream)` throws NotSupportedError when no codec
+      // matches, and `.start()` can throw too. Uncaught, either leaves the
+      // mic open forever: the stream's tracks never stop, this._session
+      // stays non-null so _start() early-returns on every future press, and
+      // the warming halo pulses with no way out short of a page reload.
+      // Same failure shape as the getUserMedia catch above: stop the stream,
+      // clear the session, clear warming, emit the same voice-error path.
+      session.rec = new MediaRecorder(stream)
+      session.rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) session.chunks.push(ev.data) }
+      session.rec.start()
+    } catch {
+      stream.getTracks().forEach((t) => t.stop())
+      if (this._session === session) this._session = null
+      this._setWarming(false)
+      this._emitError('Microphone unavailable')
+      return
+    }
+    // Capture has actually begun: warming -> recording.
+    this._setWarming(false)
     this._btn.classList.add('recording')
-    this._startWave(stream)
+    this._startWave(stream, session)
   }
 
   async _stop() {
@@ -273,7 +341,7 @@ class MicTextMic extends HTMLElement {
     if (!session) return
     this._session = null
     session.released = true
-    if (!session.rec) return // getUserMedia still pending; _runStart will tear it down
+    if (!session.rec) { this._setWarming(false); return } // still warming; _runStart tears the stream down
     const { rec, stream } = session
     this._btn.classList.remove('recording')
     this._stopWave()
@@ -282,13 +350,40 @@ class MicTextMic extends HTMLElement {
     await stopped
     stream.getTracks().forEach((t) => t.stop())
     if (Date.now() - session.downAt < CANCEL_MS) return // cancel tap
+    // Held, but said nothing: the most common case is "still gathering my
+    // thoughts". Silent no-op — no transcription, nothing typed, no alert.
+    // Fails open with no level data at all (see _startWave) AND with too
+    // little of it to judge — "not enough data" is the same epistemic state
+    // as "no data", and only an unambiguous verdict of silence suppresses.
+    //
+    // The frame count is rate-derived, not fixed: the analyser is rAF-driven
+    // (~60fps, throttling to 30fps on weak/background tabs), so a fixed count
+    // is a moving duration that would drop a real word shorter than it. Use
+    // THIS recording's measured cadence — the span between its first and last
+    // recorded frames — so the threshold is a fixed ~SPEECH_SPAN_MS of speech
+    // whatever the rate. (< 2 frames or a zero span → assume 60fps.)
+    const span = (session.lastFrameT || 0) - (session.firstFrameT || 0)
+    const frameMs = session.levels.length > 1 && span > 0 ? span / (session.levels.length - 1) : 1000 / 60
+    const need = framesForRate(frameMs)
+    if (session.metered
+        && session.levels.length >= need
+        && !hasSpeech(session.levels, { frames: need })) {
+      this._emitNoSpeech('silence')
+      return
+    }
     try {
       this._btn.disabled = true
       this._setBusy(true) // "words on the way" — same signal as model load
       guardStart() // inference is the crash-prone span on WebKit
       const { text } = await this._t.transcribeBlob(new Blob(session.chunks, { type: 'audio/webm' }))
-      if (text) this.dispatchEvent(new CustomEvent('transcript', { detail: { text }, bubbles: true }))
-      else this._emitError('No speech detected') // silence in = silence out, but say so
+      // Whisper on near-silence hallucinates rather than returning "".
+      if (isSilenceArtifact(text)) { this._emitNoSpeech('artifact'); return }
+      // lastTranscript is what was DELIVERED, not the raw model output: you
+      // correct what you can see, and any residual error lives in the text
+      // after replacements, not before them.
+      const fixed = applyTerms(text, loadTerms())
+      this.lastTranscript = fixed
+      this.dispatchEvent(new CustomEvent('transcript', { detail: { text: fixed }, bubbles: true }))
     } catch (e) {
       this._emitError(e.message)
     } finally {
@@ -315,8 +410,31 @@ class MicTextMic extends HTMLElement {
     this.toggleAttribute('busy', on)
   }
 
+  // Warming = the capture device is opening; audio is NOT being captured yet.
+  // Deliberately separate from `busy` (model load / inference): a consumer's
+  // loading treatment must not fire for two unrelated states.
+  _setWarming(on) {
+    this._btn.classList.toggle('warming', on)
+    this.toggleAttribute('warming', on)
+  }
+
+  // Teach the mic what you actually said. `heard` defaults to the last
+  // delivered transcript, which is the normal case: the host shows
+  // lastTranscript in its own correction UI and passes back the fix.
+  // Stored locally, never sent.
+  learn(said, heard = this.lastTranscript) {
+    if (!heard || !said) return
+    saveTerms(learnTerm(loadTerms(), heard, said))
+  }
+
   _emitError(message) {
     this.dispatchEvent(new CustomEvent('voice-error', { detail: { message }, bubbles: true }))
+  }
+
+  // Not an error: the user held the key and said nothing. Hosts decide
+  // whether that deserves any UI at all — the bundled demo ignores it.
+  _emitNoSpeech(reason) {
+    this.dispatchEvent(new CustomEvent('no-speech', { detail: { reason }, bubbles: true }))
   }
 }
 

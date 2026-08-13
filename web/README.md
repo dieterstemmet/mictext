@@ -48,14 +48,15 @@ Use this layer directly if you're building your own UI/hold-to-talk logic.
 <mictext-mic model="onnx-community/whisper-base.en" slow-device="disable"></mictext-mic>
 ```
 
-Hold the button (pointerdown), speak, release (pointerup) — a `transcript`
-CustomEvent fires with `{ detail: { text } }`. Releasing before ~300ms
-cancels the recording without transcribing (accidental-tap guard). Errors
-(mic permission denied, transcription failure) fire a `voice-error` event
-with `{ detail: { message } }` instead of throwing; a recording that
-transcribes to nothing fires `voice-error` with message
-`No speech detected` — feedback, not a fault. While the model loads the
-button is disabled and titled "Loading model…".
+Hold the button (pointerdown), speak, release (pointerup). Releasing before
+~300ms cancels the recording without transcribing (accidental-tap guard).
+While the model loads the button is disabled and titled "Loading model…".
+
+| Event | Detail | Meaning |
+| --- | --- | --- |
+| `transcript` | `{ text }` | The hold produced speech; `text` is the transcription. |
+| `voice-error` | `{ message }` | Something failed (mic permission denied, transcription failure, crash-blocked device) — feedback, not a fault. |
+| `no-speech` | `{ reason: 'silence' \| 'artifact' }` | The hold carried no speech — either nothing cleared the noise floor (`silence`) or Whisper returned a known silence hallucination (`artifact`). Not an error; nothing was transcribed and nothing should be inserted. |
 
 The element's default slot replaces the button face (fallback: 🎤) — slot
 an image (give it `alt` text, it becomes the button's accessible name) or
@@ -67,6 +68,17 @@ carries a `busy` attribute — style your own loading treatment off
 `mictext-mic[busy]` (the demo animates its slotted logo this way) and hide
 the built-in ring with `mictext-mic::part(ring) { display: none }`.
 
+`<mictext-mic>` also reflects a **`warming`** attribute from the moment the
+button is pressed until the capture device is actually open and recording.
+It is deliberately distinct from `busy` (model load / transcription): during
+`warming` **nothing is being captured yet**, so never show a "listening" or
+"recording" treatment for it.
+
+```css
+mictext-mic[warming] .my-logo { opacity: .5; }
+mictext-mic[busy]    .my-logo { animation: spin 1s linear infinite; }
+```
+
 Attributes: `model`, `slow-device`, `fallback-url`, `fallback-api-key`. For
 anything not expressible as an attribute (e.g. `slowThresholdMs`,
 `onProgress`), set the `transcriberOptions` property to a full options
@@ -75,6 +87,47 @@ object *before* the element is inserted into the DOM — it's read once in
 
 The element hides itself (`hidden = true`) if the device is degraded to
 `unsupported` (see policy table below).
+
+### Learning corrections
+
+`mic.lastTranscript` holds the transcript **as delivered** — i.e. *after* any
+learned replacements have already been applied, not the raw model output —
+and the element can be taught what you actually said. Corrections are stored
+in `localStorage` under `mictext-terms` and applied to every later
+transcript — they never leave the browser.
+
+```js
+mic.addEventListener('transcript', (e) => insert(e.detail.text))
+
+// Your own "that's wrong" UI:
+showCorrectionBox(mic.lastTranscript, (corrected) => mic.learn(corrected))
+```
+
+Corrections of six words or fewer are applied as whole-phrase, case-insensitive
+replacements. Longer ones are stored too, but in this web build they're inert:
+there is no decoding-bias step here. (The desktop clients, `mac/` and `win/`,
+do use the full stored list as a Whisper decoding-bias prompt via
+`whisper-cli --prompt` — that's a client-side feature, not something the web
+package does.)
+
+#### Managing the vocabulary (`mictext/terms`)
+
+The element only exposes `mic.learn(said)` for adding a correction — there's
+no built-in way to list, edit, or undo one from the element alone. A bad
+correction is easy to make and, without this, hard to fix. The storage module
+itself is exported for exactly that:
+
+```js
+import { loadTerms, saveTerms } from 'mictext/terms'
+
+loadTerms()                                          // [{ heard, said, n, at }, …]
+saveTerms(loadTerms().filter((t) => t.heard !== 'oops'))  // remove one bad entry
+saveTerms([])                                        // or clear the whole vocabulary
+```
+
+`loadTerms`/`saveTerms` read and write the same `localStorage['mictext-terms']`
+key the element itself uses, so any list/edit/clear UI you build on top of
+them stays in sync with what `<mictext-mic>` applies.
 
 ## Crash probe & the live waveform
 
