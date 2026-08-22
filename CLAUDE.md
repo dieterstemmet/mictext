@@ -19,13 +19,14 @@ cd server && .venv/bin/python -m pytest test_app.py -q
 # desktop clients (install = the whole build)
 mac/install.sh                                          # Hammerspoon + ffmpeg + whisper-cpp
 powershell -ExecutionPolicy Bypass -File win\install.ps1  # AutoHotkey v2 + ffmpeg + whisper.cpp
+powershell -ExecutionPolicy Bypass -File win\config.ps1   # mic / hotkey / model CLI (tray Settings is the GUI)
 ```
 
 ## Layout
 
 - `web/` — the npm library (`mictext`). Headless `createTranscriber()` core (`src/transcriber.js` + `src/worker.js`) and `<mictext-mic>` element (`src/mic-element.js`); dep: `@huggingface/transformers`.
 - `mac/` — macOS client: hold right-⌥, speak, text typed at cursor. One Hammerspoon module (`mictext.lua`) + `install.sh`.
-- `win/` — Windows client: hold Right Ctrl. `mictext.ahk` (AutoHotkey v2) + `install.ps1`.
+- `win/` — Windows client: hold Right Ctrl. `mictext.ahk` (AutoHotkey v2) + `install.ps1` + `config.ps1` + `icons/`. Tray Settings writes `%USERPROFILE%\.mictext\config.ini`.
 - `server/` — optional self-hosted fallback (FastAPI + faster-whisper) for the explicit `slowDevice: 'server'` opt-in only. Audio transcribed in memory, never persisted.
 
 ## Gotchas

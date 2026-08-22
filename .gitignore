@@ -3,3 +3,5 @@ node_modules/
 server/.venv/
 __pycache__/
 web/dist-demo/
+.DS_Store
+._*

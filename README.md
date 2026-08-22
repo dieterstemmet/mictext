@@ -64,6 +64,8 @@ curl -fsSL https://raw.githubusercontent.com/dieterstemmet/mictext/master/mac/in
 irm https://raw.githubusercontent.com/dieterstemmet/mictext/master/win/install.ps1 | iex
 ```
 
+Configure mic, hotkey, and model from the tray **Settings...** menu, or `win\config.ps1` from a clone.
+
 ([mac/README.md](mac/README.md) / [win/README.md](win/README.md))
 
 ## On your phone
