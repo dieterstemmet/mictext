@@ -110,11 +110,34 @@ try {
     Write-Warning "Tray icons missing - tray will use the AutoHotkey default. $($_.Exception.Message)"
 }
 
-$lnk = (New-Object -ComObject WScript.Shell).CreateShortcut(
-    "$([Environment]::GetFolderPath('Startup'))\mictext.lnk")
-$lnk.TargetPath = "$base\mictext.ahk"
+# Point at AutoHotkey64.exe, not the .ahk file: a bare .ahk shortcut is not
+# registered in StartupApproved, so Windows 11 silently skips it at login.
+$startupDir = [Environment]::GetFolderPath('Startup')
+$lnkPath = Join-Path $startupDir 'mictext.lnk'
+$lnk = (New-Object -ComObject WScript.Shell).CreateShortcut($lnkPath)
+$lnk.TargetPath = $ahkExe
+$lnk.Arguments = "`"$base\mictext.ahk`""
+$lnk.WorkingDirectory = $base
+$ico = "$base\icons\mictext.ico"
+if (Test-Path $ico) { $lnk.IconLocation = $ico }
 $lnk.Save()
 
-Write-Host "Done. Double-click $base\mictext.ahk to start now (auto-starts at next login)."
+$approved = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder"
+if (-not (Test-Path $approved)) {
+    New-Item -Path $approved -Force | Out-Null
+}
+# 02 = enabled (03 = disabled in Task Manager > Startup apps)
+$enabled = [byte[]](0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+New-ItemProperty -Path $approved -Name 'mictext.lnk' -PropertyType Binary -Value $enabled -Force | Out-Null
+
+$running = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine -like '*mictext.ahk*' }
+if (-not $running) {
+    Start-Process -FilePath $ahkExe -ArgumentList "`"$base\mictext.ahk`""
+    Write-Host "Started MicText."
+}
+
+Write-Host "Done. Look for the MicText mic logo in the system tray (hold Right Ctrl to dictate)."
+Write-Host "It will also start at next login."
 Write-Host "Configure: right-click tray icon -> Settings...  or  powershell -File $base\config.ps1"
 Write-Host "Windows will prompt for microphone access on first recording - allow it."
