@@ -76,7 +76,7 @@ Unlike macOS, no accessibility permission is needed — AutoHotkey can send keys
 ## Hotkey
 
 **Default: hold Right Ctrl** anywhere on your PC (changeable in Settings / `config.ini`):
-- A small waveform strip appears bottom-center while recording
+- A small waveform pill appears bottom-center. On the first press of a session the mic takes up to a second to open — the pill starts **grey with a "warming up" tray tooltip**; wait until it darkens and the bars move before speaking, so your first words aren't lost
 - Speak clearly into your microphone
 - Release the hotkey
 - Your speech is transcribed on-device and typed into the focused app
@@ -84,6 +84,14 @@ Unlike macOS, no accessibility permission is needed — AutoHotkey can send keys
 Right Ctrl is passed through while held, so it still works as a normal modifier key too (e.g. Ctrl+C still works during a hold). Avoid **RAlt** on international layouts (it is AltGr).
 
 **Quick tap** (shorter than `min_ms`, default 300 ms) is ignored — no text will be typed.
+
+**Silence is silence.** If you hold the key and say nothing, nothing is typed — no blank text to clean up. Whisper's silence hallucinations (`[BLANK_AUDIO]`, `Thank you.`) are dropped too.
+
+## Fixing what it mishears
+
+Press **Alt+Shift+F** right after a dictation to correct it. A box shows what it heard; type the correction and OK. The wrong text is replaced in place — but only if you haven't typed anything since and are still in the same window; otherwise the correction lands on your clipboard (MicText never guesses at your document). The pair is remembered in `%USERPROFILE%\.mictext\terms.json`.
+
+Remembered corrections do two things: they're fed to Whisper as decoding context so the word is more likely to come out right first time, and short ones (six words or fewer) are also applied as literal replacements. The file is plain JSON — edit or delete it freely, and it never leaves your PC. It shares its format with the macOS client, so the same file works on both.
 
 ## Manual Verification Checklist
 

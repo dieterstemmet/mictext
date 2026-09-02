@@ -36,12 +36,21 @@ Once granted, Hammerspoon will reload and the 🎙 icon will appear in the menub
 ## Hotkey
 
 **Hold right-⌥ (right Option key)** anywhere on your Mac:
-- The menubar shows 🎙 (idle) or 🔴 (recording)
+- The menubar shows 🎙 (idle), **🎙… (warming — the mic is opening, don't speak yet)**, or 🔴 (recording)
+- On the first press of a session the device takes up to a second to open; wait for 🔴 and the moving waveform bars before speaking, so your first words aren't lost
 - Speak clearly into your Mac's microphone
 - Release right-⌥
 - Your speech is transcribed on-device and typed into the focused app
 
 **Quick tap** (< 300 ms) is ignored — no text will be typed.
+
+**Silence is silence.** If you hold the key and say nothing (gathering your thoughts, or an accidental press), nothing is typed — no blank text to clean up. Whisper's silence hallucinations (`[BLANK_AUDIO]`, `Thank you.`) are dropped too.
+
+## Fixing what it mishears
+
+Press **⌥⇧F** (Option-Shift-F) right after a dictation to correct it. A dialog shows what it heard; type the correction and Save. The wrong text is replaced in place — but only if you haven't typed anything since and are still in the same app; otherwise the correction lands on your clipboard (MicText never guesses at your document). The pair is remembered in `~/.mictext/terms.json`.
+
+Remembered corrections do two things: they're fed to Whisper as decoding context so the word is more likely to come out right first time, and short ones (six words or fewer) are also applied as literal replacements. The file is plain JSON — edit or delete it freely, and it never leaves your Mac. It shares its format with the Windows client, so the same file works on both.
 
 ## Manual Verification Checklist
 
