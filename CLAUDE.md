@@ -36,6 +36,7 @@ powershell -ExecutionPolicy Bypass -File win\config.ps1   # mic / hotkey / model
 - `navigator.gpu` presence != working WebGPU: a failed webgpu model load retries once on a fresh worker with wasm before degrading to `unsupported`/`server` (see `web/README.md`).
 - The demo and tests aren't in the npm tarball (`files: ["src", "README.md"]`) — the demo needs a repo clone.
 - No CI — run web + server tests locally before merge.
+- **The silence-gate and vocabulary logic is triplicated on purpose** — `web/src/silence.js` and `web/src/terms.js` are the tested reference; `mac/mictext.lua` and `win/mictext.ahk` are hand-ports of them. There is no shared runtime and no Lua/AHK test harness; the "keep in sync" comments plus each file's PORTABILITY notes are the only mechanism. Change one, change all three. The web-only bits (`framesForRate`, the suspended-`AudioContext` handling) do NOT apply to the desktop clients — astats is fixed-rate; each `silence.js` note says which.
 
 ## Conventions
 
