@@ -38,6 +38,7 @@ min_ms=300
 With MicText running, look for the **MicText mic logo** in the system tray (not the green AutoHotkey “H”). **Right-click → Settings...**:
 
 - Pick a **microphone** from DirectShow devices (Refresh mics re-scans)
+- Click **Test mic**, then speak to see live input levels and dBFS before saving. This listens locally without saving audio or transcribing. Stop the test with **Stop test**; changing the selection, refreshing, saving, or closing settings also releases the mic. Dictation is paused while Settings is open.
 - Change the **hold-to-talk hotkey** (RCtrl, F8, XButton1, …)
 - Choose a **whisper model** from files in `~\.mictext\models\`
 - Adjust the **minimum hold** (ms) used to ignore accidental taps
@@ -45,6 +46,12 @@ With MicText running, look for the **MicText mic logo** in the system tray (not 
 While you hold the hotkey, the tray icon switches to a **red recording** variant and a bottom-center **rounded waveform pill** (iOS-style dark capsule, white bars) shows live levels.
 
 **Reload config** re-reads `config.ini` without restarting. **Open config folder** opens `~\.mictext\`.
+
+Saving or reloading re-enables the hold-to-talk hotkey immediately, including when the key has not changed.
+
+Windows settings regression checks (requires AutoHotkey v2 and ffmpeg): `powershell -ExecutionPolicy Bypass -File win\test\settings.ps1`. These use synthetic levels and an isolated config, without accessing a microphone.
+
+Full dictation check (requires an installed model and ffmpeg): `powershell -ExecutionPolicy Bypass -File win\test\transcription.ps1`. It uses locally synthesized speech to check short recordings, release, the speech gate, Whisper, and insertion into a temporary test textbox.
 
 ### CLI
 

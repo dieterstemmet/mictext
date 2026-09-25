@@ -1,4 +1,4 @@
-#Requires AutoHotkey v2.0
+﻿#Requires AutoHotkey v2.0
 #SingleInstance Force
 ; MicText: hold hotkey, speak, release -> text typed at the cursor.
 ; Fully on-device: ffmpeg records, whisper.cpp transcribes, nothing leaves the PC.
@@ -42,6 +42,12 @@ boundHotkey := ""
 recordingUi := false
 speechFrames := 0  ; frames this recording that cleared the window floor by SPEECH_DB
 capturing := false ; true once ffmpeg has actually opened the device (warming ends)
+testingMic := false
+testLevel := 0
+testStatus := 0
+testButton := 0
+testSeen := 0
+testStarted := 0
 
 ; --- learned vocabulary state (hand-port of web/src/terms.js; keep in sync) ---
 TERMS_FILE := BASE "\terms.json"  ; not TERMS — AHK names are case-insensitive, clashes with SaveTerms(terms)
@@ -163,7 +169,8 @@ SaveConfig() {
         . "model=" cfgModel "`r`n"
         . "min_ms=" cfgMinMs "`r`n"
     try FileDelete(CFG_FILE)
-    FileAppend(body, CFG_FILE, "UTF-8")
+    ; Windows INI APIs require UTF-16 for Unicode (a UTF-8 BOM hides the section).
+    FileAppend(body, CFG_FILE, "UTF-16")
     try FileDelete(MIC_FILE)
     try FileAppend(cfgMic, MIC_FILE, "UTF-8-RAW")
 }
@@ -220,6 +227,7 @@ BuildTray() {
 }
 
 ReloadAll() {
+    CancelCapture()
     LoadConfig()
     ApplyHotkey()
     UpdateIconTip()
@@ -235,16 +243,16 @@ ApplyHotkey() {
     }
     boundHotkey := cfgHotkey
     try {
-        Hotkey("~*" boundHotkey, (*) => StartRecording())
-        Hotkey("~*" boundHotkey " up", (*) => StopRecording())
+        Hotkey("~*" boundHotkey, (*) => StartRecording(), "On")
+        Hotkey("~*" boundHotkey " up", (*) => StopRecording(), "On")
     } catch as e {
         TrayTip("Invalid hotkey: " cfgHotkey "`n" e.Message, "MicText")
         if (cfgHotkey != "RCtrl") {
             cfgHotkey := "RCtrl"
             SaveConfig()
             boundHotkey := "RCtrl"
-            Hotkey("~*RCtrl", (*) => StartRecording())
-            Hotkey("~*RCtrl up", (*) => StopRecording())
+            Hotkey("~*RCtrl", (*) => StartRecording(), "On")
+            Hotkey("~*RCtrl up", (*) => StopRecording(), "On")
         }
     }
 }
@@ -255,11 +263,13 @@ ApplyHotkey() {
 
 OpenSettings() {
     global settingsGui, cfgMic, cfgHotkey, cfgModel, cfgMinMs, CFG_FILE
+    global testLevel, testStatus, testButton
     if settingsGui {
         settingsGui.Show()
         return
     }
 
+    CancelCapture()
     mics := ListMics()
     models := ListModels()
     if (models.Length = 0)
@@ -274,6 +284,11 @@ OpenSettings() {
     g.AddText("xm w420", "Microphone (DirectShow)")
     ddMic := g.AddDropDownList("xm w420 r8", mics)
     SelectOrInsert(ddMic, cfgMic, mics)
+    ddMic.OnEvent("Change", (*) => StopMicTest())
+    testButton := g.AddButton("xm w100", "Test mic")
+    testButton.OnEvent("Click", (*) => ToggleMicTest(ddMic))
+    testLevel := g.AddProgress("x+10 yp+4 w310 h18 Range0-100", 0)
+    testStatus := g.AddText("xm w420 h40", "Test the selected mic, then speak to check its input level.")
 
     g.AddText("xm w420 Section", "Hold-to-talk hotkey")
     hotkeys := ["RCtrl", "RShift", "RAlt", "F8", "F9", "F10", "F13", "CapsLock", "XButton1", "XButton2"]
@@ -301,6 +316,7 @@ OpenSettings() {
 
 CloseSettings(*) {
     global settingsGui
+    StopMicTest()
     if settingsGui {
         try settingsGui.Destroy()
         settingsGui := 0
@@ -324,12 +340,13 @@ SelectOrInsert(dd, value, list) {
 }
 
 RefreshMicList(ddMic) {
-    global cfgMic
+    StopMicTest()
+    selected := ddMic.Text
     mics := ListMics()
     ddMic.Delete()
     if mics.Length
         ddMic.Add(mics)
-    SelectOrInsert(ddMic, cfgMic, mics)
+    SelectOrInsert(ddMic, selected, mics)
     if !mics.Length
         TrayTip("No dshow audio devices found", "MicText")
 }
@@ -346,6 +363,7 @@ SaveSettingsFromGui(ddMic, ddHot, ddModel, edMin) {
     }
     if (minMs < 50)
         minMs := 50
+    CancelCapture()
     cfgMic := mic
     cfgHotkey := hot
     cfgModel := model
@@ -355,6 +373,113 @@ SaveSettingsFromGui(ddMic, ddHot, ddModel, edMin) {
     UpdateIconTip()
     CloseSettings()
     TrayTip("Saved — hold " cfgHotkey " to dictate", "MicText")
+}
+
+; =============================================================================
+; Capture levels and microphone preview
+; =============================================================================
+
+; Preview shares the capture slot with dictation, but writes only level metadata.
+; No audio is saved or transcribed while testing.
+CaptureLevelFilter() {
+    global RMS
+    ; Quote the filename for the filtergraph parser so the escaped drive colon
+    ; survives until ametadata parses its options.
+    rmsEsc := StrReplace(StrReplace(RMS, "\", "/"), ":", "\:")
+    ; DirectShow can deliver half-second packets. Split into 10ms frames so the
+    ; meter and the speech gate receive the 100 updates/second they expect.
+    return "aresample=16000,asetnsamples=n=160:p=0,astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:direct=1:file='" rmsEsc "'"
+}
+
+ToggleMicTest(ddMic) {
+    global testingMic, recPid, RMS, testSeen, testStarted, testStatus, testButton
+    if testingMic {
+        StopMicTest()
+        return
+    }
+    if (ddMic.Text = "") {
+        testStatus.Text := "Select a microphone first."
+        return
+    }
+    CancelCapture()
+    testSeen := 0
+    testStarted := A_TickCount
+    af := CaptureLevelFilter()
+    try Run('ffmpeg -hide_banner -f dshow -i audio="' ddMic.Text '" -ar 16000 -ac 1 -af "' af '" -f null -', , "Hide", &recPid)
+    catch as e {
+        recPid := 0
+        testStatus.Text := "Could not start microphone: " e.Message
+        return
+    }
+    testingMic := true
+    testButton.Text := "Stop test"
+    testStatus.Text := "Opening microphone..."
+    SetTimer(UpdateMicTest, 100)
+}
+
+UpdateMicTest() {
+    global testingMic, recPid, RMS, testSeen, testStarted, testStatus, testLevel
+    if !testingMic
+        return
+    if !ProcessExist(recPid) {
+        StopMicTest()
+        testStatus.Text := "Could not read this mic. Check its connection and Windows microphone permissions."
+        return
+    }
+    text := ""
+    try text := FileRead(RMS)
+    ; Consume complete lines only: ffmpeg may be in the middle of a write.
+    end := InStr(text, "`n", , -1)
+    pos := testSeen + 1
+    if (end > testSeen) {
+        chunk := SubStr(text, pos, end - testSeen)
+        testSeen := end
+        for line in StrSplit(chunk, "`n", "`r") {
+            if (p := InStr(line, "RMS_level=")) {
+                db := Trim(SubStr(line, p + 10))
+                testLevel.Value := IsNumber(db) ? Max(0, Min(100, (db + 60) / 60 * 100)) : 0
+                testStatus.Text := IsNumber(db)
+                    ? Format("Listening: {:.1f} dBFS - speak and watch the level.", db + 0.0)
+                    : "Listening: silence - speak to check the mic."
+            }
+        }
+    }
+    if (!testSeen && A_TickCount - testStarted > 10000) {
+        StopMicTest()
+        testStatus.Text := "No audio received. Check the mic or select another input."
+    }
+}
+
+StopMicTest() {
+    global testingMic, testLevel, testStatus, testButton
+    SetTimer(UpdateMicTest, 0)
+    if !testingMic
+        return
+    testingMic := false
+    CancelCapture()
+    testLevel.Value := 0
+    testButton.Text := "Test mic"
+    testStatus.Text := "Test stopped. Select a mic and click Test mic to listen again."
+}
+
+CancelCapture() {
+    global recPid, capturing, RAW, testingMic
+    if testingMic {
+        StopMicTest()
+        return
+    }
+    if recPid {
+        pid := recPid
+        recPid := 0
+        try {
+            ProcessClose(pid)
+            ProcessWaitClose(pid, 2)
+        }
+    }
+    capturing := false
+    HideMeter()
+    SetTrayRecording(false)
+    try FileDelete(RAW)
 }
 
 ; =============================================================================
@@ -383,6 +508,7 @@ Gdip_Shutdown() {
 }
 
 MicTextExit(*) {
+    CancelCapture()
     HideMeter()
     Gdip_Shutdown()
 }
@@ -593,8 +719,8 @@ HideMeter() {
 ; =============================================================================
 
 StartRecording() {
-    global recPid, downAt, cfgMic, RAW, RMS, capturing
-    if recPid
+    global recPid, downAt, cfgMic, RAW, RMS, capturing, settingsGui
+    if recPid || settingsGui
         return
     if (cfgMic = "") {
         TrayTip("No mic configured — open Settings from the tray icon", "MicText")
@@ -607,9 +733,15 @@ StartRecording() {
     downAt := A_TickCount
     try FileDelete(RAW)
     try FileDelete(RMS)
-    rmsEsc := StrReplace(StrReplace(RMS, "\", "/"), ":", "\:")
-    af := "astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:direct=1:file=" rmsEsc
-    Run('ffmpeg -y -f dshow -i audio="' cfgMic '" -ar 16000 -ac 1 -af "' af '" -f s16le "' RAW '"', , "Hide", &recPid)
+    af := CaptureLevelFilter()
+    ; StopRecording terminates ffmpeg: flush each packet so short utterances
+    ; are already on disk instead of lost in ffmpeg's output buffer.
+    try Run('ffmpeg -y -f dshow -i audio="' cfgMic '" -ar 16000 -ac 1 -af "' af '" -flush_packets 1 -f s16le "' RAW '"', , "Hide", &recPid)
+    catch as e {
+        recPid := 0
+        TrayTip("Could not start microphone: " e.Message, "MicText")
+        return
+    }
     capturing := false
     A_IconTip := "MicText (warming up...)"
     SetTrayRecording(true)
@@ -617,20 +749,26 @@ StartRecording() {
 }
 
 StopRecording() {
-    global recPid, downAt, cfgMinMs, RAW, speechFrames, SPEECH_FRAMES
-    if !recPid
+    global recPid, downAt, cfgMinMs, RAW, speechFrames, SPEECH_FRAMES, testingMic
+    if !recPid || testingMic
         return
     pid := recPid
     recPid := 0
     cancelled := (A_TickCount - downAt) < cfgMinMs
-    ProcessClose(pid)
+    failed := !ProcessExist(pid)
+    try {
+        ProcessClose(pid)
+        ProcessWaitClose(pid, 2)
+    }
     ; One last tail before the meter tears down: the 70ms timer may not have
     ; consumed the final RMS lines, and they count toward the gate.
     UpdateMeter()
     quiet := speechFrames < SPEECH_FRAMES
     HideMeter()
     SetTrayRecording(false)
-    if (cancelled || quiet) {   ; held but said nothing = silent no-op
+    if failed
+        TrayTip("Microphone stopped. Check the selected mic in Settings.", "MicText")
+    if (failed || cancelled || quiet) {   ; held but said nothing = silent no-op
         try FileDelete(RAW)
         return
     }

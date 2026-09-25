@@ -64,7 +64,7 @@ mic=$mic
 hotkey=RCtrl
 model=ggml-base.en.bin
 min_ms=300
-"@ | Set-Content -Path $cfg -Encoding utf8
+"@ | Set-Content -Path $cfg -Encoding Unicode
     }
 }
 
@@ -106,7 +106,7 @@ model=$($c.model)
 min_ms=$($c.min_ms)
 "@
     # Full rewrite with trailing newline (avoids stacking sections if a reader re-saves)
-    [System.IO.File]::WriteAllText($cfg, $body.TrimEnd() + [Environment]::NewLine)
+    [System.IO.File]::WriteAllText($cfg, $body.TrimEnd() + [Environment]::NewLine, [System.Text.Encoding]::Unicode)
 
     # Keep legacy mic.txt in sync
     [System.IO.File]::WriteAllText($micFile, $c.mic)

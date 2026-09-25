@@ -70,7 +70,7 @@ hotkey=$hotkey
 model=$modelName
 min_ms=$minMs
 "@
-    [System.IO.File]::WriteAllText($cfg, $body.TrimEnd() + [Environment]::NewLine)
+    [System.IO.File]::WriteAllText($cfg, $body.TrimEnd() + [Environment]::NewLine, [System.Text.Encoding]::Unicode)
     [System.IO.File]::WriteAllText("$base\mic.txt", $mic)
 }
 
