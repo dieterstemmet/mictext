@@ -40,4 +40,4 @@ powershell -ExecutionPolicy Bypass -File win\config.ps1   # mic / hotkey / model
 
 ## Conventions
 
-Single-line commit messages, no Co-Authored-By trailers, no AI attribution in PRs. Run `/code-review` at high effort before merging any PR.
+Commit subject plus a why/what/proof body, no Co-Authored-By trailers, no AI attribution in PRs. Run `/code-review` at high effort before merging any PR.
