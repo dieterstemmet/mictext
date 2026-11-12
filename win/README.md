@@ -4,6 +4,63 @@ Hold Right Ctrl anywhere, speak, then release — your words appear typed at the
 
 ## Installation
 
+### Portable Windows app
+
+The portable package runs on **Windows 10/11 x64** without installing
+AutoHotkey, ffmpeg, a Microsoft runtime, or a model:
+
+1. Extract the entire `MicText-Windows-x64.zip` to a permanent folder.
+2. Double-click **MicText.exe**, keeping its `bin`, `models`, and `icons` folders beside it.
+3. On first launch, select a microphone, use **Test mic**, then **Save**.
+4. Hold **Right Ctrl** in a text field, speak, and release to type.
+
+The English base model is included; running the app needs no internet or
+administrator access. Settings and learned vocabulary stay in
+`%USERPROFILE%\.mictext`, shared with script installs. Additional models in
+that folder's `models` directory remain available. Exit an older MicText
+instance before starting the EXE. This build is unsigned.
+
+The portable app starts when you launch it. To start it at login, add a
+shortcut to `MicText.exe` to your Windows Startup folder (`shell:startup`).
+When replacing a script install, update its existing Startup shortcut
+instead of adding a second one.
+
+#### Build the ZIP
+
+From a source checkout on Windows, using Windows PowerShell 5.1 or newer:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File win\build.ps1
+```
+
+The builder downloads pinned inputs from their official upstream hosts,
+checks every download and cached input against `package-manifest.json`,
+then compiles and packages the EXE. It does not use an installed MicText
+or copy user configuration, vocabulary, recordings, or credentials.
+Build-time internet is required on the first run; subsequent builds reuse
+verified downloads from `.build/windows`. No tools are installed system-wide.
+
+Outputs: `dist/windows/MicText-Windows-x64.zip` and its `.zip.sha256` file.
+The ZIP also includes source, dependency versions, license notices and
+payload checksums. Inputs are pinned; ZIP timestamps are not normalized.
+Use `-OutputDirectory` or `-CacheDirectory` to choose other locations.
+
+Validate the build and the actual package:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File win\test\build.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File win\test\package.ps1
+```
+
+The package test uses a temporary profile, a folder with spaces, and a
+PATH containing only Windows directories. It checks payload hashes,
+first-run setup, settings save, incomplete extraction, and synthetic
+speech through capture, release, Whisper and textbox insertion. It uses
+the packaged interpreter, ffmpeg, model, and DLLs, without recording a mic
+or changing your installed app.
+
+### Script installation
+
 One line, no clone needed — open **PowerShell** and run:
 
 ```powershell

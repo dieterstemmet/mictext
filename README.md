@@ -72,6 +72,11 @@ curl -fsSL https://raw.githubusercontent.com/dieterstemmet/mictext/master/mac/in
 irm https://raw.githubusercontent.com/dieterstemmet/mictext/master/win/install.ps1 | iex
 ```
 
+Prefer an executable? Build the [portable Windows app](win/README.md#portable-windows-app)
+with `powershell -NoProfile -ExecutionPolicy Bypass -File win\build.ps1`.
+Extract its ZIP and run **MicText.exe** — the tools and English model are
+included, so no separate installs are needed on the PC running it.
+
 Configure mic, hotkey, and model from the tray **Settings...** menu, or `win\config.ps1` from a clone.
 
 ([mac/README.md](mac/README.md) / [win/README.md](win/README.md))
