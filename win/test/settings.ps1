@@ -31,8 +31,19 @@ RunTests() {
     MIC_FILE := BASE "\mic.txt"
     RAW := BASE "\test.pcm"
     RMS := BASE "\test-rms.txt"
+    MODEL_DIR := BASE "\bundled models"
     presses := 0, releases := 0
     try {
+        DirCreate(MODEL_DIR)
+        DirCreate(BASE "\models")
+        FileAppend("bundled", MODEL_DIR "\base.bin")
+        FileAppend("personal", BASE "\models\base.bin")
+        FileAppend("extra", BASE "\models\test.bin")
+        Check(ListModels().Length = 2, "Bundled and personal models must be listed without duplicates")
+        cfgModel := "base.bin"
+        Check(ModelPath() = BASE "\models\base.bin", "Existing personal models must keep working")
+        FileDelete(BASE "\models\base.bin")
+        Check(ModelPath() = MODEL_DIR "\base.bin", "Bundled model must work without an installed copy")
         code := RunWait('ffmpeg -hide_banner -f lavfi -i "sine=frequency=440:duration=0.2" -af "' CaptureLevelFilter() '" -f null -', , "Hide")
         Check(code = 0 && FileExist(RMS), "Capture filter must accept Windows drive paths")
         Check(InStr(FileRead(RMS), "RMS_level="), "Capture filter must produce real level metadata")
@@ -94,7 +105,7 @@ RunTests() {
         SendEvent("{F13 down}{F13 up}")
         Sleep(100)
         Check(presses = 7 && releases = 7, "Reload must keep dictation enabled")
-        FileAppend("PASS: hotkey apply/change/save/reload, preview levels/silence/partial writes, cleanup`n", "*")
+        FileAppend("PASS: bundled/personal models, hotkey apply/change/save/reload, preview levels/silence/partial writes, cleanup`n", "*")
     } catch as e {
         FileAppend("FAIL: " e.Message " at " e.Line "`n", "*")
         ExitApp(1)

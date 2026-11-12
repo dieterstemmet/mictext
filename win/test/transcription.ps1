@@ -1,7 +1,9 @@
 # Full local speech -> PCM -> Whisper -> textbox check, using synthesized speech.
+param([string]$PackageDirectory)
 $ErrorActionPreference = 'Stop'
 $ahk = "$env:ProgramFiles\AutoHotkey\v2\AutoHotkey64.exe"
 if (-not (Test-Path $ahk)) { $ahk = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe" }
+if ($PackageDirectory) { $ahk = Join-Path $PackageDirectory 'MicText.exe' }
 $tempDir = Join-Path ([IO.Path]::GetTempPath()) ('mictext-transcription-' + [guid]::NewGuid())
 New-Item -ItemType Directory $tempDir | Out-Null
 try {
@@ -16,25 +18,54 @@ try {
     $end = $source.IndexOf('; =============================================================================', $start)
     $source = $source.Remove($start, $end - $start).Insert($start, "RunTest()`nExitApp()`n")
     # Exercise the production capture command with a file input instead of hardware.
-    if (-not $source.Contains('-f dshow -i audio="'' cfgMic ''"')) {
-        throw 'Capture command changed; update the synthetic input replacement before running this test.'
+    if (-not $source.Contains('CaptureInput(mic) {')) {
+        throw 'Capture adapter changed; update the synthetic input before running this test.'
     }
-    $source = $source.Replace('-f dshow -i audio="'' cfgMic ''"', '-stream_loop -1 -re -i "'' A_ScriptDir ''\speech.wav"')
+    $source = $source.Replace('CaptureInput(mic) {', 'OriginalCaptureInput(mic) {')
+    $source = $source.Replace("`nTalkKeyHeld() {", "`nOriginalTalkKeyHeld() {")
+    # Inference can take seconds; re-establish the test target immediately before
+    # the real SendText call so unrelated foreground activity cannot race the check.
+    $source = $source.Replace('    lastWin := WinExist("A")', "    FocusTestTextbox()`n    lastWin := WinExist(`"A`")")
     $tests = @'
+CaptureInput(mic) {
+    return '-stream_loop -1 -re -i "' A_ScriptDir '\speech.wav"'
+}
+TalkKeyHeld() {
+    global testTalkHeld
+    return testTalkHeld
+}
+TrayTip(text, title := "", options := "") {
+    global lastNotice
+    lastNotice := text
+}
 RunTest() {
     global
+    if A_Args.Length {
+        APP_DIR := A_Args[1]
+        BIN_DIR := APP_DIR "\bin"
+        MODEL_DIR := APP_DIR "\models"
+        WHISPER := BIN_DIR "\whisper-cli.exe"
+        FFMPEG := BIN_DIR "\ffmpeg.exe"
+    }
     RAW := A_ScriptDir "\audio.pcm"
     WAV := A_ScriptDir "\audio.wav"
     OUT := A_ScriptDir "\out.txt"
     RMS := A_ScriptDir "\rms.txt"
     TERMS_FILE := A_ScriptDir "\terms.json"
     cfgMic := "Synthetic speech"
+    boundHotkey := "F13"
+    testTalkHeld := true
+    failed := false
+    lastNotice := ""
     try {
         ; StartRecording uses the real command, with just its input replaced.
         StartRecording()
+        Check(recPid, "Capture must start; settings=" (!!settingsGui) "; processing=" processing "; blocked=" cancelledHold)
         Sleep(2000)
         Check(FileExist(RAW) && FileGetSize(RAW) > 16000,
-            "Short recording must reach disk before ffmpeg is terminated")
+            "Short recording must reach disk before ffmpeg is terminated; capture=" recPid
+            . "; held=" TalkKeyHeld() "; blocked=" cancelledHold "; processing=" processing
+            . "; bytes=" (FileExist(RAW) ? FileGetSize(RAW) : 0) "; notice=" lastNotice)
         ; Finish the phrase, then exercise release, the speech gate and SendText.
         Sleep(1500)
         g := Gui(, "MicText transcription test")
@@ -43,6 +74,7 @@ RunTest() {
         WinActivate(g.Hwnd)
         Check(WinWaitActive(g.Hwnd, , 2), "Test textbox must be active before transcription")
         textbox.Focus()
+        testTalkHeld := false
         StopRecording()
         ; Let this script's own GUI process the input messages from SendText.
         Sleep(100)
@@ -54,9 +86,17 @@ RunTest() {
     } catch as e {
         CancelCapture()
         FileAppend("FAIL: " e.Message " at " e.Line "`n", "*")
-        ExitApp(1)
+        failed := true
     }
     Gdip_Shutdown()
+    if failed
+        ExitApp(1)
+}
+FocusTestTextbox() {
+    global g, textbox
+    WinActivate(g.Hwnd)
+    Check(WinWaitActive(g.Hwnd, , 2), "Test textbox must be active at insertion")
+    textbox.Focus()
 }
 Check(ok, message) {
     if !ok
@@ -65,7 +105,11 @@ Check(ok, message) {
 '@
     $path = Join-Path $tempDir 'transcription.ahk'
     [IO.File]::WriteAllText($path, $source + "`n" + $tests, [Text.UTF8Encoding]::new($true))
-    & $ahk /ErrorStdOut $path | Out-Host
+    if ($PackageDirectory) {
+        & $ahk /script /ErrorStdOut $path $PackageDirectory | Out-Host
+    } else {
+        & $ahk /ErrorStdOut $path | Out-Host
+    }
     if ($LASTEXITCODE -ne 0) { throw "Transcription checks failed ($LASTEXITCODE)" }
 } finally {
     if ((Split-Path $tempDir -Parent) -ne [IO.Path]::GetTempPath().TrimEnd('\')) { throw 'Unexpected test directory' }

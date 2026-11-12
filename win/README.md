@@ -4,6 +4,77 @@ Hold Right Ctrl anywhere, speak, then release — your words appear typed at the
 
 ## Installation
 
+### Portable Windows app
+
+The portable package runs on **Windows 10/11 x64** without installing
+AutoHotkey, ffmpeg, a Microsoft runtime, or a model:
+
+1. Extract the entire `MicText-Windows-x64.zip` to a permanent folder.
+2. Double-click **MicText.exe**, keeping its `bin`, `models`, and `icons` folders beside it.
+3. On first launch, select a microphone, use **Test mic**, then **Save**.
+4. Hold **Right Ctrl** in a text field, speak, and release to type.
+
+The English base model is included; running the app needs no internet or
+administrator access. Settings and learned vocabulary stay in
+`%USERPROFILE%\.mictext`, shared with script installs. Additional models in
+that folder's `models` directory remain available. Exit an older MicText
+instance before starting the EXE. This build is unsigned.
+
+The portable app starts when you launch it. To start it at login, add a
+shortcut to `MicText.exe` to your Windows Startup folder (`shell:startup`).
+When replacing a script install, update its existing Startup shortcut
+instead of adding a second one.
+
+#### Build the ZIP
+
+From a source checkout on Windows, using Windows PowerShell 5.1 or newer:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File win\build.ps1
+```
+
+The builder downloads pinned inputs from their official upstream hosts,
+checks every download and cached input against `package-manifest.json`,
+then compiles and packages the EXE. It does not use an installed MicText
+or copy user configuration, vocabulary, recordings, or credentials.
+Build-time internet is required on the first run; subsequent builds reuse
+verified downloads from `.build/windows`. No tools are installed system-wide.
+
+Outputs: `dist/windows/MicText-Windows-x64.zip` and its `.zip.sha256` file.
+The ZIP also includes source, dependency versions, license notices and
+payload checksums. Inputs are pinned; ZIP timestamps are not normalized.
+Use `-OutputDirectory` or `-CacheDirectory` to choose other locations.
+
+Validate the build and the actual package:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File win\test\build.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File win\test\package.ps1
+```
+
+The package test uses a temporary profile, a folder with spaces, and a
+PATH containing only Windows directories. It checks payload hashes,
+first-run setup, settings save, incomplete extraction, and synthetic
+speech through capture, release, Whisper and textbox insertion. It uses
+the packaged interpreter, ffmpeg, model, and DLLs, without recording a mic
+or changing your installed app.
+
+Capture recovery checks can also run from source:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File win\test\capture.ps1
+```
+
+These cover release during startup, missed key-up callbacks (including
+Right Ctrl/Right Alt), capture crashes, stalled input, Escape cancellation,
+and overlapping or failed transcription.
+
+For a manual startup measurement with your microphone (levels only; no
+audio saved), run `win\test\latency.ps1 -MicName "Your microphone name"`.
+It compares the device's default capture buffer with MicText's 50 ms buffer.
+
+### Script installation
+
 One line, no clone needed — open **PowerShell** and run:
 
 ```powershell
@@ -89,6 +160,17 @@ Unlike macOS, no accessibility permission is needed — AutoHotkey can send keys
 - Your speech is transcribed on-device and typed into the focused app
 
 Right Ctrl is passed through while held, so it still works as a normal modifier key too (e.g. Ctrl+C still works during a hold). Avoid **RAlt** on international layouts (it is AltGr).
+
+**Escape cancels** a recording, even while the talk modifier is held. The
+cancelled hold stays cancelled until the talk key is released. The
+tray also has **Cancel recording**. MicText independently checks whether
+the key is still held, whether capture is alive, and whether level samples
+are arriving, so a missed release or stalled device cannot keep it recording.
+Wait for the previous text to appear before starting another dictation.
+
+Capture requests a **50 ms DirectShow buffer** for lower startup latency in
+both dictation and **Test mic**. Device initialization still takes time;
+the microphone opens for each hold and closes on release.
 
 **Quick tap** (shorter than `min_ms`, default 300 ms) is ignored — no text will be typed.
 

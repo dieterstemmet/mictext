@@ -1,0 +1,30 @@
+{
+  "autohotkey": {
+    "url": "https://github.com/AutoHotkey/AutoHotkey/releases/download/v2.0.26/AutoHotkey_2.0.26.zip",
+    "sha256": "43522aa3122a57784ac5db30abf85c2244475c36acd7796e2c993355f9e926ae"
+  },
+  "autohotkeySource": {
+    "url": "https://github.com/AutoHotkey/AutoHotkey/archive/refs/tags/v2.0.26.zip",
+    "sha256": "765ada5ae0a543f470bcd30371a7b95438e59351b0a20508c516df76a4f73ca4"
+  },
+  "compiler": {
+    "url": "https://github.com/AutoHotkey/Ahk2Exe/releases/download/Ahk2Exe1.1.37.02a2/Ahk2Exe1.1.37.02a2.zip",
+    "sha256": "c29b8c3a5124850d79fc9e66e2ca79677c377d7f31631ad3022ba159c5d9e3be"
+  },
+  "ffmpeg": {
+    "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
+    "sha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba"
+  },
+  "whisper": {
+    "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.1/whisper-bin-x64.zip",
+    "sha256": "7d8be46ecd31828e1eb7a2ecdd0d6b314feafd82163038ab6092594b0a063539"
+  },
+  "vclibs": {
+    "url": "https://download.microsoft.com/download/4/7/c/47c6134b-d61f-4024-83bd-b9c9ea951c25/Microsoft.VCLibs.x64.14.00.Desktop.appx",
+    "sha256": "b56a9101f706f9d95f815f5b7fa6efbac972e86573d378b96a07cff5540c5961"
+  },
+  "model": {
+    "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.en.bin",
+    "sha256": "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002"
+  }
+}

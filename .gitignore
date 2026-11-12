@@ -5,3 +5,5 @@ __pycache__/
 web/dist-demo/
 .DS_Store
 ._*
+.build/
+dist/

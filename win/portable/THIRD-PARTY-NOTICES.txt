@@ -1,0 +1,37 @@
+MicText is MIT licensed; see LICENSE.txt and source/win/mictext.ahk.
+Bundled third-party components retain their own licenses.
+The exact binary downloads and SHA-256 hashes are in dependencies.json.
+
+AutoHotkey 2.0.26 (embedded interpreter): GNU GPL version 2 or later.
+License: licenses/AutoHotkey.txt
+Corresponding source archive is included as source/AutoHotkey-v2.0.26.zip.
+Corresponding source: https://github.com/AutoHotkey/AutoHotkey/tree/v2.0.26
+Source archive: https://github.com/AutoHotkey/AutoHotkey/archive/refs/tags/v2.0.26.zip
+The MicText script and build instructions are included under source/win.
+
+FFmpeg 9.0.2 essentials build by Gyan Doshi: GNU GPL version 3 or later.
+License: licenses/FFmpeg.txt
+Exact source: https://github.com/FFmpeg/FFmpeg/commit/946fcce07b
+The upstream configuration and external library versions are preserved in
+licenses/FFmpeg-build.txt.
+Build information and external libraries: https://www.gyan.dev/ffmpeg/builds/
+This is an unmodified executable; MicText invokes it as a separate process.
+
+whisper.cpp 1.9.1 and ggml: MIT licensed.
+License: licenses/whisper.cpp.txt
+Source and license: https://github.com/ggml-org/whisper.cpp/tree/v1.9.1
+Whisper base.en model weights: MIT licensed.
+License: licenses/Whisper-model.txt
+Source and license: https://github.com/openai/whisper
+Converted model: https://huggingface.co/ggerganov/whisper.cpp
+
+Microsoft Visual C++ UWP Desktop Runtime 14.0.33321.0 (x64):
+Copyright Microsoft Corporation. Subject to Microsoft's runtime terms.
+Official package: https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx
+Terms: https://visualstudio.microsoft.com/license-terms/vs2022-cruntime/
+Original terms: licenses/Microsoft-Visual-Cpp.docx, downloaded from
+https://visualstudio.microsoft.com/wp-content/uploads/2021/09/Visual-C-Runtime-2015-2022-License-1.docx
+Only app-local runtime DLLs are included; nothing is installed system-wide.
+
+Ahk2Exe is a build tool, not included in the runnable package:
+https://github.com/AutoHotkey/Ahk2Exe/tree/Ahk2Exe1.1.37.02a2
