@@ -105,6 +105,7 @@ ExitApp(failed ? 1 : 0)
     }
 
     Invoke-Isolated $exe "/script /ErrorStdOut `"$controllerPath`" `"$exe`""
+    Invoke-Isolated "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" "-NoProfile -ExecutionPolicy Bypass -File `"$PSScriptRoot\capture.ps1`" -PackageDirectory `"$package`""
     Invoke-Isolated "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" "-NoProfile -ExecutionPolicy Bypass -File `"$PSScriptRoot\transcription.ps1`" -PackageDirectory `"$package`""
 } finally {
     if ((Split-Path $tempDir -Parent) -ne [IO.Path]::GetTempPath().TrimEnd('\')) { throw 'Unexpected test directory' }

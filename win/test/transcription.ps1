@@ -18,14 +18,17 @@ try {
     $end = $source.IndexOf('; =============================================================================', $start)
     $source = $source.Remove($start, $end - $start).Insert($start, "RunTest()`nExitApp()`n")
     # Exercise the production capture command with a file input instead of hardware.
-    if (-not $source.Contains('-f dshow -i audio="'' cfgMic ''"')) {
-        throw 'Capture command changed; update the synthetic input replacement before running this test.'
+    if (-not $source.Contains('CaptureInput(mic) {')) {
+        throw 'Capture adapter changed; update the synthetic input before running this test.'
     }
-    $source = $source.Replace('-f dshow -i audio="'' cfgMic ''"', '-stream_loop -1 -re -i "'' A_ScriptDir ''\speech.wav"')
+    $source = $source.Replace('CaptureInput(mic) {', 'OriginalCaptureInput(mic) {')
     # Inference can take seconds; re-establish the test target immediately before
     # the real SendText call so unrelated foreground activity cannot race the check.
     $source = $source.Replace('    lastWin := WinExist("A")', "    FocusTestTextbox()`n    lastWin := WinExist(`"A`")")
     $tests = @'
+CaptureInput(mic) {
+    return '-stream_loop -1 -re -i "' A_ScriptDir '\speech.wav"'
+}
 RunTest() {
     global
     if A_Args.Length {

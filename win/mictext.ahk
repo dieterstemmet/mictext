@@ -428,6 +428,11 @@ SaveSettingsFromGui(ddMic, ddHot, ddModel, edMin) {
 
 ; Preview shares the capture slot with dictation, but writes only level metadata.
 ; No audio is saved or transcribed while testing.
+CaptureInput(mic) {
+    ; DirectShow's device default can buffer roughly half a second before delivery.
+    return '-f dshow -audio_buffer_size 50 -i audio="' mic '"'
+}
+
 CaptureLevelFilter() {
     global RMS
     ; Quote the filename for the filtergraph parser so the escaped drive colon
@@ -440,6 +445,11 @@ CaptureLevelFilter() {
 
 ToggleMicTest(ddMic) {
     global testingMic, recPid, RMS, testSeen, testStarted, testStatus, testButton, FFMPEG
+    global processing
+    if processing {
+        testStatus.Text := "Finishing transcription. Test the mic after the text appears."
+        return
+    }
     if testingMic {
         StopMicTest()
         return
@@ -452,7 +462,7 @@ ToggleMicTest(ddMic) {
     testSeen := 0
     testStarted := A_TickCount
     af := CaptureLevelFilter()
-    try Run('"' FFMPEG '" -hide_banner -f dshow -i audio="' ddMic.Text '" -ar 16000 -ac 1 -af "' af '" -f null -', , "Hide", &recPid)
+    try Run('"' FFMPEG '" -hide_banner ' CaptureInput(ddMic.Text) ' -ar 16000 -ac 1 -af "' af '" -f null -', , "Hide", &recPid)
     catch as e {
         recPid := 0
         testStatus.Text := "Could not start microphone: " e.Message
@@ -510,7 +520,9 @@ StopMicTest() {
 }
 
 CancelCapture() {
-    global recPid, capturing, RAW, testingMic
+    global recPid, capturing, RAW, testingMic, processing
+    if processing
+        return ; The transcriber still owns RAW/WAV; stopping capture cannot delete them.
     SetTimer(WatchRecording, 0)
     if testingMic {
         StopMicTest()
@@ -557,6 +569,7 @@ Gdip_Shutdown() {
 
 MicTextExit(*) {
     CancelCapture()
+    Cleanup()
     HideMeter()
     Gdip_Shutdown()
 }
@@ -791,7 +804,7 @@ StartRecording() {
         try FileDelete(RMS)
         af := CaptureLevelFilter()
         ; Flush every packet so release cannot discard buffered short utterances.
-        try Run('"' FFMPEG '" -y -f dshow -i audio="' cfgMic '" -ar 16000 -ac 1 -af "' af '" -flush_packets 1 -f s16le "' RAW '"', , "Hide", &recPid)
+        try Run('"' FFMPEG '" -y ' CaptureInput(cfgMic) ' -ar 16000 -ac 1 -af "' af '" -flush_packets 1 -f s16le "' RAW '"', , "Hide", &recPid)
         catch as e {
             recPid := 0
             TrayTip("Could not start microphone: " e.Message, "MicText")

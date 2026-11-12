@@ -12,11 +12,14 @@ try {
     $start = $source.IndexOf('ResolveIcons()')
     $end = $source.IndexOf('; =============================================================================', $start)
     $source = $source.Remove($start, $end - $start).Insert($start, "RunTests()`nExitApp()`n")
-    if (-not $source.Contains('-f dshow -i audio="'' cfgMic ''"')) { throw 'Update synthetic capture input for the production command' }
-    $source = $source.Replace('-f dshow -i audio="'' cfgMic ''"', '-re -f lavfi -i "sine=frequency=440:sample_rate=16000"')
+    if (-not $source.Contains('CaptureInput(mic) {')) { throw 'Update synthetic capture input for the production adapter' }
+    $source = $source.Replace('CaptureInput(mic) {', 'OriginalCaptureInput(mic) {')
     $source = $source.Replace('Transcribe() {', 'OriginalTranscribe() {')
     $source = $source.Replace('ShowMeter() {', 'OriginalShowMeter() {')
     $tests = @'
+CaptureInput(mic) {
+    return '-re -f lavfi -i "sine=frequency=440:sample_rate=16000"'
+}
 Check(ok, message) {
     if !ok
         throw Error(message)
@@ -29,7 +32,19 @@ WaitIdle(context) {
     Check(!recPid, "Recording must recover: " context)
 }
 Transcribe() {
-    global recPid, transcribeChecks, failTranscribe
+    global recPid, transcribeChecks, failTranscribe, RAW, testingMic, testStatus
+    CancelCapture() ; Settings/reload may arrive while the transcriber owns its input.
+    Check(FileExist(RAW), "Cancel/settings callbacks must not delete audio during transcription")
+    panel := Gui()
+    mic := panel.AddDropDownList(, ["Synthetic tone"])
+    mic.Choose(1)
+    testStatus := panel.AddText()
+    try {
+        ToggleMicTest(mic)
+        Check(!recPid && !testingMic, "Mic preview must not take the capture slot during transcription")
+    } finally {
+        panel.Destroy()
+    }
     StartRecording()
     Check(!recPid, "A new recording must not overwrite audio during transcription")
     transcribeChecks++
@@ -96,7 +111,8 @@ RunTests() {
             pid := recPid
             Check(pid, "A held key must start capture")
             Sleep(400)
-            Check(recPid = pid && ProcessExist(pid), "Capture must remain active while the key is held")
+            Check(recPid = pid && ProcessExist(pid), "Capture must remain active with " key
+                . " held; pid=" pid "; capture=" recPid "; key state=" DllCall("GetAsyncKeyState", "int", GetKeyVK(key), "short"))
             SendEvent("{" key " up}")
             WaitIdle("missing " key " release")
             Check(!ProcessExist(pid) && !recordingUi && !meterGui, "Recovery must close capture and recording UI")
@@ -149,7 +165,7 @@ RunTests() {
         }
         Check(transcribeChecks = 2, "Both transcription paths must run and permit the next recording")
         Check(!errors.Length, "Capture lifecycle must not raise timer or hotkey errors")
-        FileAppend("PASS: startup/release races (F13/RAlt), crash, Escape, stalled audio, re-entry, exception cleanup`n", "*")
+        FileAppend("PASS: startup/release races (F13/RCtrl/RAlt), crash, Escape, stalled audio, re-entry, exception cleanup`n", "*")
     } catch as e {
         FileAppend("FAIL: " e.Message " at " e.Line "`n", "*")
         failed := true

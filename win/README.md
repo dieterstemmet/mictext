@@ -59,6 +59,20 @@ speech through capture, release, Whisper and textbox insertion. It uses
 the packaged interpreter, ffmpeg, model, and DLLs, without recording a mic
 or changing your installed app.
 
+Capture recovery checks can also run from source:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File win\test\capture.ps1
+```
+
+These cover release during startup, missed key-up callbacks (including
+Right Ctrl/Right Alt), capture crashes, stalled input, Escape cancellation,
+and overlapping or failed transcription.
+
+For a manual startup measurement with your microphone (levels only; no
+audio saved), run `win\test\latency.ps1 -MicName "Your microphone name"`.
+It compares the device's default capture buffer with MicText's 50 ms buffer.
+
 ### Script installation
 
 One line, no clone needed — open **PowerShell** and run:
@@ -146,6 +160,16 @@ Unlike macOS, no accessibility permission is needed — AutoHotkey can send keys
 - Your speech is transcribed on-device and typed into the focused app
 
 Right Ctrl is passed through while held, so it still works as a normal modifier key too (e.g. Ctrl+C still works during a hold). Avoid **RAlt** on international layouts (it is AltGr).
+
+**Escape cancels** a recording, even while the talk modifier is held. The
+tray also has **Cancel recording**. MicText independently checks whether
+the key is still held, whether capture is alive, and whether level samples
+are arriving, so a missed release or stalled device cannot keep it recording.
+Wait for the previous text to appear before starting another dictation.
+
+Capture requests a **50 ms DirectShow buffer** for lower startup latency in
+both dictation and **Test mic**. Device initialization still takes time;
+the microphone opens for each hold and closes on release.
 
 **Quick tap** (shorter than `min_ms`, default 300 ms) is ignored — no text will be typed.
 
