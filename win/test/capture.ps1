@@ -14,7 +14,7 @@ try {
     $source = $source.Remove($start, $end - $start).Insert($start, "RunTests()`nExitApp()`n")
     if (-not $source.Contains('CaptureInput(mic) {')) { throw 'Update synthetic capture input for the production adapter' }
     $source = $source.Replace('CaptureInput(mic) {', 'OriginalCaptureInput(mic) {')
-    $source = $source.Replace('TalkKeyHeld() {', 'OriginalTalkKeyHeld() {')
+    $source = $source.Replace("`nTalkKeyHeld() {", "`nOriginalTalkKeyHeld() {")
     $source = $source.Replace('Transcribe() {', 'OriginalTranscribe() {')
     $source = $source.Replace('ShowMeter() {', 'OriginalShowMeter() {')
     $tests = @'

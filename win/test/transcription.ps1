@@ -22,7 +22,7 @@ try {
         throw 'Capture adapter changed; update the synthetic input before running this test.'
     }
     $source = $source.Replace('CaptureInput(mic) {', 'OriginalCaptureInput(mic) {')
-    $source = $source.Replace('TalkKeyHeld() {', 'OriginalTalkKeyHeld() {')
+    $source = $source.Replace("`nTalkKeyHeld() {", "`nOriginalTalkKeyHeld() {")
     # Inference can take seconds; re-establish the test target immediately before
     # the real SendText call so unrelated foreground activity cannot race the check.
     $source = $source.Replace('    lastWin := WinExist("A")', "    FocusTestTextbox()`n    lastWin := WinExist(`"A`")")
@@ -33,6 +33,10 @@ CaptureInput(mic) {
 TalkKeyHeld() {
     global testTalkHeld
     return testTalkHeld
+}
+TrayTip(text, title := "", options := "") {
+    global lastNotice
+    lastNotice := text
 }
 RunTest() {
     global
@@ -52,12 +56,16 @@ RunTest() {
     boundHotkey := "F13"
     testTalkHeld := true
     failed := false
+    lastNotice := ""
     try {
         ; StartRecording uses the real command, with just its input replaced.
         StartRecording()
+        Check(recPid, "Capture must start; settings=" (!!settingsGui) "; processing=" processing "; blocked=" cancelledHold)
         Sleep(2000)
         Check(FileExist(RAW) && FileGetSize(RAW) > 16000,
-            "Short recording must reach disk before ffmpeg is terminated")
+            "Short recording must reach disk before ffmpeg is terminated; capture=" recPid
+            . "; held=" TalkKeyHeld() "; blocked=" cancelledHold "; processing=" processing
+            . "; bytes=" (FileExist(RAW) ? FileGetSize(RAW) : 0) "; notice=" lastNotice)
         ; Finish the phrase, then exercise release, the speech gate and SendText.
         Sleep(1500)
         g := Gui(, "MicText transcription test")
