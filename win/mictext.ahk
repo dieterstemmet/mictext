@@ -1,5 +1,9 @@
 ﻿#Requires AutoHotkey v2.0
 #SingleInstance Force
+;@Ahk2Exe-SetName MicText
+;@Ahk2Exe-SetDescription MicText offline dictation
+;@Ahk2Exe-SetCompanyName MicText contributors
+;@Ahk2Exe-SetVersion 0.2.0.0
 ; MicText: hold hotkey, speak, release -> text typed at the cursor.
 ; Fully on-device: ffmpeg records, whisper.cpp transcribes, nothing leaves the PC.
 ; Config: %USERPROFILE%\.mictext\config.ini  (tray icon -> Settings...)
@@ -9,9 +13,12 @@
 BASE      := EnvGet("USERPROFILE") "\.mictext"
 CFG_FILE  := BASE "\config.ini"
 MIC_FILE  := BASE "\mic.txt"             ; legacy one-liner; migrated into config.ini
-BIN_DIR   := BASE "\bin"
-MODEL_DIR := BASE "\models"
-ICON_DIR  := BASE "\icons"
+; Compiled apps carry their tools/model beside the EXE; personal data stays in BASE.
+APP_DIR   := A_IsCompiled ? A_ScriptDir : BASE
+BIN_DIR   := APP_DIR "\bin"
+MODEL_DIR := APP_DIR "\models"
+ICON_DIR  := APP_DIR "\icons"
+FFMPEG    := A_IsCompiled ? BIN_DIR "\ffmpeg.exe" : "ffmpeg"
 WHISPER   := BIN_DIR "\whisper-cli.exe"
 ICON_IDLE := ICON_DIR "\mictext.ico"
 ICON_REC  := ICON_DIR "\mictext-rec.ico"
@@ -78,23 +85,25 @@ hiSeen := ""
 ResolveIcons()
 Gdip_Startup()
 LoadConfig()
+CheckBundle()
 BuildTray()
 SetTrayRecording(false)
 ApplyHotkey()
 UpdateIconTip()
 Hotkey("!+f", (*) => FixLast())
 OnExit(MicTextExit)
+if A_IsCompiled && cfgMic = ""
+    SetTimer(OpenSettings, -100)
 
 ; =============================================================================
 ; Icons / tray chrome
 ; =============================================================================
 
 ResolveIcons() {
-    ; Prefer installed icons under ~/.mictext/icons; fall back to script-adjacent
-    ; (repo win/ or win/icons/) so running from source still brands the tray.
-    global ICON_IDLE, ICON_REC, ICON_DIR, BASE
+    ; Prefer this app's icons; source runs also fall back to the repo's icons.
+    global ICON_IDLE, ICON_REC, ICON_DIR
     candidates := [
-        BASE "\icons",
+        ICON_DIR,
         A_ScriptDir "\icons",
         A_ScriptDir
     ]
@@ -123,7 +132,7 @@ SetTrayRecording(on) {
 ; =============================================================================
 
 LoadConfig() {
-    global cfgMic, cfgHotkey, cfgModel, cfgMinMs, CFG_FILE, MIC_FILE, MODEL_DIR
+    global cfgMic, cfgHotkey, cfgModel, cfgMinMs, CFG_FILE, MIC_FILE
     EnsureConfigFile()
     cfgMic    := IniRead(CFG_FILE, "MicText", "mic", "")
     cfgHotkey := IniRead(CFG_FILE, "MicText", "hotkey", "RCtrl")
@@ -138,8 +147,7 @@ LoadConfig() {
         if (cfgMic != "")
             SaveConfig()
     }
-    modelPath := MODEL_DIR "\" cfgModel
-    if !FileExist(modelPath) {
+    if !FileExist(ModelPath()) {
         for f in ListModels() {
             cfgModel := f
             break
@@ -176,18 +184,26 @@ SaveConfig() {
 }
 
 ListModels() {
-    global MODEL_DIR
-    out := []
-    loop files MODEL_DIR "\*.bin"
-        out.Push(A_LoopFileName)
+    global MODEL_DIR, BASE
+    out := [], seen := Map()
+    for dir in [MODEL_DIR, BASE "\models"] {
+        loop files dir "\*.bin" {
+            key := StrLower(A_LoopFileName)
+            if !seen.Has(key) {
+                out.Push(A_LoopFileName)
+                seen[key] := true
+            }
+        }
+    }
     return out
 }
 
 ListMics() {
+    global FFMPEG
     out := []
     tmp := A_Temp "\mictext-devices.txt"
     try FileDelete(tmp)
-    RunWait(A_ComSpec ' /c ffmpeg -hide_banner -list_devices true -f dshow -i dummy 2> "' tmp '"', , "Hide")
+    RunWait(A_ComSpec ' /c ""' FFMPEG '" -hide_banner -list_devices true -f dshow -i dummy 2> "' tmp '""', , "Hide")
     text := ""
     try text := FileRead(tmp)
     try FileDelete(tmp)
@@ -199,8 +215,24 @@ ListMics() {
 }
 
 ModelPath() {
-    global MODEL_DIR, cfgModel
+    global MODEL_DIR, BASE, cfgModel
+    personal := BASE "\models\" cfgModel
+    if FileExist(personal)
+        return personal
     return MODEL_DIR "\" cfgModel
+}
+
+CheckBundle() {
+    global FFMPEG, WHISPER
+    if !A_IsCompiled
+        return
+    for path in [FFMPEG, WHISPER, ModelPath()] {
+        if !FileExist(path) {
+            MsgBox("Extract the entire MicText ZIP before running MicText.exe.`n"
+                . "Keep the bin, models and icons folders beside the EXE.", "MicText", "Icon!")
+            ExitApp(1)
+        }
+    }
 }
 
 UpdateIconTip() {
@@ -296,7 +328,7 @@ OpenSettings() {
     SelectOrInsert(ddHot, cfgHotkey, hotkeys)
     g.AddText("x+10 yp+4 c666666", "AHK key name (e.g. RCtrl)")
 
-    g.AddText("xm w420", "Whisper model (from ~/.mictext/models)")
+    g.AddText("xm w420", "Whisper model")
     ddModel := g.AddDropDownList("xm w420 r6", models)
     SelectOrInsert(ddModel, cfgModel, models)
 
@@ -392,7 +424,7 @@ CaptureLevelFilter() {
 }
 
 ToggleMicTest(ddMic) {
-    global testingMic, recPid, RMS, testSeen, testStarted, testStatus, testButton
+    global testingMic, recPid, RMS, testSeen, testStarted, testStatus, testButton, FFMPEG
     if testingMic {
         StopMicTest()
         return
@@ -405,7 +437,7 @@ ToggleMicTest(ddMic) {
     testSeen := 0
     testStarted := A_TickCount
     af := CaptureLevelFilter()
-    try Run('ffmpeg -hide_banner -f dshow -i audio="' ddMic.Text '" -ar 16000 -ac 1 -af "' af '" -f null -', , "Hide", &recPid)
+    try Run('"' FFMPEG '" -hide_banner -f dshow -i audio="' ddMic.Text '" -ar 16000 -ac 1 -af "' af '" -f null -', , "Hide", &recPid)
     catch as e {
         recPid := 0
         testStatus.Text := "Could not start microphone: " e.Message
@@ -719,7 +751,7 @@ HideMeter() {
 ; =============================================================================
 
 StartRecording() {
-    global recPid, downAt, cfgMic, RAW, RMS, capturing, settingsGui
+    global recPid, downAt, cfgMic, RAW, RMS, capturing, settingsGui, FFMPEG
     if recPid || settingsGui
         return
     if (cfgMic = "") {
@@ -736,7 +768,7 @@ StartRecording() {
     af := CaptureLevelFilter()
     ; StopRecording terminates ffmpeg: flush each packet so short utterances
     ; are already on disk instead of lost in ffmpeg's output buffer.
-    try Run('ffmpeg -y -f dshow -i audio="' cfgMic '" -ar 16000 -ac 1 -af "' af '" -flush_packets 1 -f s16le "' RAW '"', , "Hide", &recPid)
+    try Run('"' FFMPEG '" -y -f dshow -i audio="' cfgMic '" -ar 16000 -ac 1 -af "' af '" -flush_packets 1 -f s16le "' RAW '"', , "Hide", &recPid)
     catch as e {
         recPid := 0
         TrayTip("Could not start microphone: " e.Message, "MicText")
@@ -925,8 +957,8 @@ IsArtifact(text) {
 }
 
 Transcribe() {
-    global lastText, lastWin, sinceHook, RAW, WAV, OUT, WHISPER
-    if RunWait('ffmpeg -y -f s16le -ar 16000 -ac 1 -i "' RAW '" "' WAV '"', , "Hide") != 0 {
+    global lastText, lastWin, sinceHook, RAW, WAV, OUT, WHISPER, FFMPEG
+    if RunWait('"' FFMPEG '" -y -f s16le -ar 16000 -ac 1 -i "' RAW '" "' WAV '"', , "Hide") != 0 {
         Cleanup()
         TrayTip("transcription failed", "MicText")
         return

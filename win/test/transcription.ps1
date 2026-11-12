@@ -1,7 +1,9 @@
 # Full local speech -> PCM -> Whisper -> textbox check, using synthesized speech.
+param([string]$PackageDirectory)
 $ErrorActionPreference = 'Stop'
 $ahk = "$env:ProgramFiles\AutoHotkey\v2\AutoHotkey64.exe"
 if (-not (Test-Path $ahk)) { $ahk = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe" }
+if ($PackageDirectory) { $ahk = Join-Path $PackageDirectory 'MicText.exe' }
 $tempDir = Join-Path ([IO.Path]::GetTempPath()) ('mictext-transcription-' + [guid]::NewGuid())
 New-Item -ItemType Directory $tempDir | Out-Null
 try {
@@ -20,9 +22,19 @@ try {
         throw 'Capture command changed; update the synthetic input replacement before running this test.'
     }
     $source = $source.Replace('-f dshow -i audio="'' cfgMic ''"', '-stream_loop -1 -re -i "'' A_ScriptDir ''\speech.wav"')
+    # Inference can take seconds; re-establish the test target immediately before
+    # the real SendText call so unrelated foreground activity cannot race the check.
+    $source = $source.Replace('    lastWin := WinExist("A")', "    FocusTestTextbox()`n    lastWin := WinExist(`"A`")")
     $tests = @'
 RunTest() {
     global
+    if A_Args.Length {
+        APP_DIR := A_Args[1]
+        BIN_DIR := APP_DIR "\bin"
+        MODEL_DIR := APP_DIR "\models"
+        WHISPER := BIN_DIR "\whisper-cli.exe"
+        FFMPEG := BIN_DIR "\ffmpeg.exe"
+    }
     RAW := A_ScriptDir "\audio.pcm"
     WAV := A_ScriptDir "\audio.wav"
     OUT := A_ScriptDir "\out.txt"
@@ -58,6 +70,12 @@ RunTest() {
     }
     Gdip_Shutdown()
 }
+FocusTestTextbox() {
+    global g, textbox
+    WinActivate(g.Hwnd)
+    Check(WinWaitActive(g.Hwnd, , 2), "Test textbox must be active at insertion")
+    textbox.Focus()
+}
 Check(ok, message) {
     if !ok
         throw Error(message)
@@ -65,7 +83,11 @@ Check(ok, message) {
 '@
     $path = Join-Path $tempDir 'transcription.ahk'
     [IO.File]::WriteAllText($path, $source + "`n" + $tests, [Text.UTF8Encoding]::new($true))
-    & $ahk /ErrorStdOut $path | Out-Host
+    if ($PackageDirectory) {
+        & $ahk /script /ErrorStdOut $path $PackageDirectory | Out-Host
+    } else {
+        & $ahk /ErrorStdOut $path | Out-Host
+    }
     if ($LASTEXITCODE -ne 0) { throw "Transcription checks failed ($LASTEXITCODE)" }
 } finally {
     if ((Split-Path $tempDir -Parent) -ne [IO.Path]::GetTempPath().TrimEnd('\')) { throw 'Unexpected test directory' }
