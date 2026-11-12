@@ -41,8 +41,11 @@ RunTest() {
     RMS := A_ScriptDir "\rms.txt"
     TERMS_FILE := A_ScriptDir "\terms.json"
     cfgMic := "Synthetic speech"
+    boundHotkey := "F13"
+    failed := false
     try {
         ; StartRecording uses the real command, with just its input replaced.
+        SendEvent("{F13 down}")
         StartRecording()
         Sleep(2000)
         Check(FileExist(RAW) && FileGetSize(RAW) > 16000,
@@ -55,6 +58,7 @@ RunTest() {
         WinActivate(g.Hwnd)
         Check(WinWaitActive(g.Hwnd, , 2), "Test textbox must be active before transcription")
         textbox.Focus()
+        SendEvent("{F13 up}")
         StopRecording()
         ; Let this script's own GUI process the input messages from SendText.
         Sleep(100)
@@ -66,9 +70,13 @@ RunTest() {
     } catch as e {
         CancelCapture()
         FileAppend("FAIL: " e.Message " at " e.Line "`n", "*")
-        ExitApp(1)
+        failed := true
+    } finally {
+        SendEvent("{F13 up}")
     }
     Gdip_Shutdown()
+    if failed
+        ExitApp(1)
 }
 FocusTestTextbox() {
     global g, textbox

@@ -43,6 +43,8 @@ SPEECH_DB     := 12
 SPEECH_FRAMES := 10
 
 recPid := 0
+processing := false ; owns the audio files until stop/transcription has finished
+lastAudioAt := 0
 downAt := 0
 settingsGui := 0
 boundHotkey := ""
@@ -91,6 +93,7 @@ SetTrayRecording(false)
 ApplyHotkey()
 UpdateIconTip()
 Hotkey("!+f", (*) => FixLast())
+BindCancelHotkey()
 OnExit(MicTextExit)
 if A_IsCompiled && cfgMic = ""
     SetTimer(OpenSettings, -100)
@@ -251,6 +254,7 @@ BuildTray() {
     global BASE
     A_TrayMenu.Delete()
     A_TrayMenu.Add("Settings...", (*) => OpenSettings())
+    A_TrayMenu.Add("Cancel recording", (*) => CancelCapture())
     A_TrayMenu.Add("Reload config", (*) => ReloadAll())
     A_TrayMenu.Add("Open config folder", (*) => Run('explorer.exe "' BASE '"'))
     A_TrayMenu.Add()
@@ -287,6 +291,17 @@ ApplyHotkey() {
             Hotkey("~*RCtrl up", (*) => StopRecording(), "On")
         }
     }
+}
+
+IsDictating(*) {
+    global recPid, testingMic, cfgHotkey
+    return recPid && !testingMic && GetKeyVK(cfgHotkey) != 0x1B
+}
+
+BindCancelHotkey() {
+    HotIf(IsDictating)
+    Hotkey("*Esc", (*) => CancelCapture(), "On")
+    HotIf()
 }
 
 ; =============================================================================
@@ -496,6 +511,7 @@ StopMicTest() {
 
 CancelCapture() {
     global recPid, capturing, RAW, testingMic
+    SetTimer(WatchRecording, 0)
     if testingMic {
         StopMicTest()
         return
@@ -712,12 +728,13 @@ PushLevel(db) {
 }
 
 UpdateMeter() {
-    global meterLevels, latest, env, rmsSeen, RMS, capturing
+    global meterLevels, latest, env, rmsSeen, RMS, capturing, lastAudioAt
     try {
         lines := StrSplit(FileRead(RMS), "`n", "`r")
         while (rmsSeen < lines.Length) {
             rmsSeen++
             if (p := InStr(lines[rmsSeen], "RMS_level=")) {
+                lastAudioAt := A_TickCount
                 ; ffmpeg writes nothing before the device opens, so the FIRST
                 ; RMS line is the first captured sample: warming ends here.
                 if (!capturing) {
@@ -752,59 +769,101 @@ HideMeter() {
 
 StartRecording() {
     global recPid, downAt, cfgMic, RAW, RMS, capturing, settingsGui, FFMPEG
-    if recPid || settingsGui
+    global processing, lastAudioAt
+    ; A release may arrive while the process/UI are being created. Queue it until
+    ; both exist; only this short setup is critical, never recording or inference.
+    wasCritical := A_IsCritical
+    Critical("On")
+    try {
+        if recPid || settingsGui || processing
+            return
+        if (cfgMic = "") {
+            TrayTip("No mic configured — open Settings from the tray icon", "MicText")
+            return
+        }
+        if !FileExist(ModelPath()) {
+            TrayTip("Model missing: " ModelPath(), "MicText")
+            return
+        }
+        downAt := A_TickCount
+        lastAudioAt := downAt
+        try FileDelete(RAW)
+        try FileDelete(RMS)
+        af := CaptureLevelFilter()
+        ; Flush every packet so release cannot discard buffered short utterances.
+        try Run('"' FFMPEG '" -y -f dshow -i audio="' cfgMic '" -ar 16000 -ac 1 -af "' af '" -flush_packets 1 -f s16le "' RAW '"', , "Hide", &recPid)
+        catch as e {
+            recPid := 0
+            TrayTip("Could not start microphone: " e.Message, "MicText")
+            return
+        }
+        capturing := false
+        A_IconTip := "MicText (warming up...)"
+        SetTrayRecording(true)
+        ShowMeter()
+        SetTimer(WatchRecording, 50)
+    } finally {
+        Critical(wasCritical)
+    }
+}
+
+WatchRecording() {
+    global recPid, testingMic, boundHotkey, cfgHotkey, lastAudioAt
+    if !recPid || testingMic
         return
-    if (cfgMic = "") {
-        TrayTip("No mic configured — open Settings from the tray icon", "MicText")
+    if !ProcessExist(recPid) {
+        CancelCapture()
+        TrayTip("Microphone stopped. Check the selected mic in Settings.", "MicText")
         return
     }
-    if !FileExist(ModelPath()) {
-        TrayTip("Model missing: " ModelPath(), "MicText")
+    ; Check Windows directly: a lost hook callback must not leave the mic open.
+    vk := GetKeyVK(boundHotkey != "" ? boundHotkey : cfgHotkey)
+    if vk && !(DllCall("GetAsyncKeyState", "int", vk, "short") & 0x8000) {
+        StopRecording()
         return
     }
-    downAt := A_TickCount
-    try FileDelete(RAW)
-    try FileDelete(RMS)
-    af := CaptureLevelFilter()
-    ; StopRecording terminates ffmpeg: flush each packet so short utterances
-    ; are already on disk instead of lost in ffmpeg's output buffer.
-    try Run('"' FFMPEG '" -y -f dshow -i audio="' cfgMic '" -ar 16000 -ac 1 -af "' af '" -flush_packets 1 -f s16le "' RAW '"', , "Hide", &recPid)
-    catch as e {
-        recPid := 0
-        TrayTip("Could not start microphone: " e.Message, "MicText")
-        return
+    if (A_TickCount - lastAudioAt > 10000) {
+        CancelCapture()
+        TrayTip("No audio received. Check the mic or select another input in Settings.", "MicText")
     }
-    capturing := false
-    A_IconTip := "MicText (warming up...)"
-    SetTrayRecording(true)
-    ShowMeter()
 }
 
 StopRecording() {
     global recPid, downAt, cfgMinMs, RAW, speechFrames, SPEECH_FRAMES, testingMic
+    global processing, capturing
     if !recPid || testingMic
         return
-    pid := recPid
-    recPid := 0
-    cancelled := (A_TickCount - downAt) < cfgMinMs
-    failed := !ProcessExist(pid)
+    processing := true
+    SetTimer(WatchRecording, 0)
     try {
-        ProcessClose(pid)
-        ProcessWaitClose(pid, 2)
+        pid := recPid
+        recPid := 0
+        cancelled := (A_TickCount - downAt) < cfgMinMs
+        failed := !ProcessExist(pid)
+        try {
+            ProcessClose(pid)
+            ProcessWaitClose(pid, 2)
+        }
+        ; Drain the last level frames before the meter and metadata are removed.
+        UpdateMeter()
+        quiet := speechFrames < SPEECH_FRAMES
+        HideMeter()
+        SetTrayRecording(false)
+        if failed
+            TrayTip("Microphone stopped. Check the selected mic in Settings.", "MicText")
+        if (failed || cancelled || quiet) {
+            try FileDelete(RAW)
+            return
+        }
+        A_IconTip := "MicText (transcribing...)"
+        Transcribe()
+    } finally {
+        capturing := false
+        try HideMeter()
+        try SetTrayRecording(false)
+        Cleanup()
+        processing := false
     }
-    ; One last tail before the meter tears down: the 70ms timer may not have
-    ; consumed the final RMS lines, and they count toward the gate.
-    UpdateMeter()
-    quiet := speechFrames < SPEECH_FRAMES
-    HideMeter()
-    SetTrayRecording(false)
-    if failed
-        TrayTip("Microphone stopped. Check the selected mic in Settings.", "MicText")
-    if (failed || cancelled || quiet) {   ; held but said nothing = silent no-op
-        try FileDelete(RAW)
-        return
-    }
-    Transcribe()
 }
 
 ; --- learned vocabulary functions (hand-port of web/src/terms.js) -------------
