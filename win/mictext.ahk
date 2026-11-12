@@ -44,6 +44,7 @@ SPEECH_FRAMES := 10
 
 recPid := 0
 processing := false ; owns the audio files until stop/transcription has finished
+cancelledHold := false ; suppress repeating talk-key downs until release
 lastAudioAt := 0
 downAt := 0
 settingsGui := 0
@@ -513,14 +514,14 @@ StopMicTest() {
     if !testingMic
         return
     testingMic := false
-    CancelCapture()
+    CancelCapture(false)
     testLevel.Value := 0
     testButton.Text := "Test mic"
     testStatus.Text := "Test stopped. Select a mic and click Test mic to listen again."
 }
 
-CancelCapture() {
-    global recPid, capturing, RAW, testingMic, processing
+CancelCapture(blockHold := true) {
+    global recPid, capturing, RAW, testingMic, processing, cancelledHold
     if processing
         return ; The transcriber still owns RAW/WAV; stopping capture cannot delete them.
     SetTimer(WatchRecording, 0)
@@ -528,18 +529,27 @@ CancelCapture() {
         StopMicTest()
         return
     }
-    if recPid {
-        pid := recPid
-        recPid := 0
-        try {
-            ProcessClose(pid)
-            ProcessWaitClose(pid, 2)
+    processing := true
+    try {
+        if recPid {
+            if blockHold
+                cancelledHold := true
+            pid := recPid
+            recPid := 0
+            try {
+                ProcessClose(pid)
+                ProcessWaitClose(pid, 2)
+            }
         }
+        capturing := false
+        HideMeter()
+        SetTrayRecording(false)
+        try FileDelete(RAW)
+    } finally {
+        processing := false
+        if cancelledHold
+            SetTimer(WatchRecording, 50)
     }
-    capturing := false
-    HideMeter()
-    SetTrayRecording(false)
-    try FileDelete(RAW)
 }
 
 ; =============================================================================
@@ -782,13 +792,13 @@ HideMeter() {
 
 StartRecording() {
     global recPid, downAt, cfgMic, RAW, RMS, capturing, settingsGui, FFMPEG
-    global processing, lastAudioAt
+    global processing, lastAudioAt, cancelledHold
     ; A release may arrive while the process/UI are being created. Queue it until
     ; both exist; only this short setup is critical, never recording or inference.
     wasCritical := A_IsCritical
     Critical("On")
     try {
-        if recPid || settingsGui || processing
+        if recPid || settingsGui || processing || cancelledHold
             return
         if (cfgMic = "") {
             TrayTip("No mic configured — open Settings from the tray icon", "MicText")
@@ -820,18 +830,30 @@ StartRecording() {
     }
 }
 
+TalkKeyHeld() {
+    global boundHotkey, cfgHotkey
+    vk := GetKeyVK(boundHotkey != "" ? boundHotkey : cfgHotkey)
+    return !vk || (DllCall("GetAsyncKeyState", "int", vk, "short") & 0x8000)
+}
+
 WatchRecording() {
-    global recPid, testingMic, boundHotkey, cfgHotkey, lastAudioAt
-    if !recPid || testingMic
+    global recPid, testingMic, lastAudioAt, cancelledHold
+    if testingMic
         return
+    if !recPid {
+        if !cancelledHold || !TalkKeyHeld() {
+            cancelledHold := false
+            SetTimer(WatchRecording, 0)
+        }
+        return
+    }
     if !ProcessExist(recPid) {
         CancelCapture()
         TrayTip("Microphone stopped. Check the selected mic in Settings.", "MicText")
         return
     }
     ; Check Windows directly: a lost hook callback must not leave the mic open.
-    vk := GetKeyVK(boundHotkey != "" ? boundHotkey : cfgHotkey)
-    if vk && !(DllCall("GetAsyncKeyState", "int", vk, "short") & 0x8000) {
+    if !TalkKeyHeld() {
         StopRecording()
         return
     }
@@ -843,9 +865,12 @@ WatchRecording() {
 
 StopRecording() {
     global recPid, downAt, cfgMinMs, RAW, speechFrames, SPEECH_FRAMES, testingMic
-    global processing, capturing
-    if !recPid || testingMic
+    global processing, capturing, cancelledHold
+    cancelledHold := false
+    if !recPid || testingMic {
+        SetTimer(WatchRecording, 0)
         return
+    }
     processing := true
     SetTimer(WatchRecording, 0)
     try {

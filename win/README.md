@@ -162,6 +162,7 @@ Unlike macOS, no accessibility permission is needed — AutoHotkey can send keys
 Right Ctrl is passed through while held, so it still works as a normal modifier key too (e.g. Ctrl+C still works during a hold). Avoid **RAlt** on international layouts (it is AltGr).
 
 **Escape cancels** a recording, even while the talk modifier is held. The
+cancelled hold stays cancelled until the talk key is released. The
 tray also has **Cancel recording**. MicText independently checks whether
 the key is still held, whether capture is alive, and whether level samples
 are arriving, so a missed release or stalled device cannot keep it recording.

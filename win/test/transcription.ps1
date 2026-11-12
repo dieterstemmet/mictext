@@ -22,12 +22,17 @@ try {
         throw 'Capture adapter changed; update the synthetic input before running this test.'
     }
     $source = $source.Replace('CaptureInput(mic) {', 'OriginalCaptureInput(mic) {')
+    $source = $source.Replace('TalkKeyHeld() {', 'OriginalTalkKeyHeld() {')
     # Inference can take seconds; re-establish the test target immediately before
     # the real SendText call so unrelated foreground activity cannot race the check.
     $source = $source.Replace('    lastWin := WinExist("A")', "    FocusTestTextbox()`n    lastWin := WinExist(`"A`")")
     $tests = @'
 CaptureInput(mic) {
     return '-stream_loop -1 -re -i "' A_ScriptDir '\speech.wav"'
+}
+TalkKeyHeld() {
+    global testTalkHeld
+    return testTalkHeld
 }
 RunTest() {
     global
@@ -45,10 +50,10 @@ RunTest() {
     TERMS_FILE := A_ScriptDir "\terms.json"
     cfgMic := "Synthetic speech"
     boundHotkey := "F13"
+    testTalkHeld := true
     failed := false
     try {
         ; StartRecording uses the real command, with just its input replaced.
-        SendEvent("{F13 down}")
         StartRecording()
         Sleep(2000)
         Check(FileExist(RAW) && FileGetSize(RAW) > 16000,
@@ -61,7 +66,7 @@ RunTest() {
         WinActivate(g.Hwnd)
         Check(WinWaitActive(g.Hwnd, , 2), "Test textbox must be active before transcription")
         textbox.Focus()
-        SendEvent("{F13 up}")
+        testTalkHeld := false
         StopRecording()
         ; Let this script's own GUI process the input messages from SendText.
         Sleep(100)
@@ -74,8 +79,6 @@ RunTest() {
         CancelCapture()
         FileAppend("FAIL: " e.Message " at " e.Line "`n", "*")
         failed := true
-    } finally {
-        SendEvent("{F13 up}")
     }
     Gdip_Shutdown()
     if failed

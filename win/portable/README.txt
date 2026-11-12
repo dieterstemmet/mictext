@@ -7,6 +7,8 @@ MicText for Windows (x64)
    check the level, then Save.
 4. Click into a text field, hold Right Ctrl, speak, and release to type.
 
+Escape cancels a recording. Release the talk key before starting again.
+
 Microphone, hotkey and model settings are available from the MicText tray
 icon's Settings menu. Exit closes MicText. Double-click MicText.exe to
 start it again. You can create a shortcut to it wherever you prefer.

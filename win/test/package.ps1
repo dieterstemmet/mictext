@@ -44,7 +44,9 @@ try {
     ; No microphones is valid on a test PC; the complete pipeline uses synthetic audio below.
     Check(FileExist(cfg), "Settings must be created in the user profile")
     ControlChooseString("F13", "ComboBox2", settings)
-    ControlClick("Button2", settings) ; Save; Button1 is Test mic.
+    ; BM_CLICK invokes the button without activating the test app or depending
+    ; on foreground mouse/modifier state. Button1 is Test mic, Button2 is Save.
+    SendMessage(0x00F5, 0, 0, "Button2", settings)
     Check(WinWaitClose(settings, , 3), "Saving must close setup")
     Check(IniRead(cfg, "MicText", "hotkey") = "F13", "Saving setup must persist the hotkey")
     Check(IniRead(cfg, "MicText", "model") = "ggml-base.en.bin", "Saving setup must persist the bundled model")
@@ -59,7 +61,7 @@ try {
     errorWindow := "MicText ahk_class #32770 ahk_pid " appPid
     Check(WinWait(errorWindow, , 5), "Missing bundled tools must show an extraction error")
     Check(InStr(WinGetText(errorWindow), "Extract"), "Error must explain how to extract the package")
-    ControlClick("Button1", errorWindow)
+    SendMessage(0x00F5, 0, 0, "Button1", errorWindow)
     ProcessWaitClose(appPid, 3)
     Check(!ProcessExist(appPid), "Incomplete package must exit after the error")
     appPid := 0
