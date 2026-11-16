@@ -1,0 +1,6 @@
+# Web library: vitest, 6 spec files (127 tests)
+cd web && npm test
+# Server: python packages must be installed once (pip install -r server/requirements.txt pytest httpx), else this line says so
+python -c "import fastapi, faster_whisper, multipart, httpx, pytest" || { echo "server tests need: pip install -r server/requirements.txt pytest httpx" >&2; exit 1; }
+# Server: FastAPI fallback tests (auth, origins, transcription with a stub model)
+cd server && python -m pytest test_app.py -q
