@@ -18,6 +18,10 @@ npm pack --dry-run                  # tarball must list only src/, README.md, pa
 cd server && python -m venv .venv && .venv/bin/pip install -r requirements.txt pytest httpx
 cd server && .venv/bin/python -m pytest test_app.py -q
 
+# pre-push gate: every push runs ops/gate (web npm test, server pytest). Run it without pushing:
+python ~/.claude/skills/rules/tools/pre-push-gate.py
+# needs `npm ci` in web/ and, once, `pip install -r server/requirements.txt pytest httpx` into the python on PATH (the gate does not use server/.venv)
+
 # desktop clients (install = the whole build)
 mac/install.sh                                          # Hammerspoon + ffmpeg + whisper-cpp
 powershell -ExecutionPolicy Bypass -File win\install.ps1  # AutoHotkey v2 + ffmpeg + whisper.cpp
